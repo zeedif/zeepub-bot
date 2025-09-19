@@ -1,0 +1,8 @@
+# Ignorar todo por defecto
+*
+
+# Pero no ignorar este archivo específico
+!zeepub_bot.py
+
+# No ignorar tampoco el propio .gitignore
+!.gitignore
