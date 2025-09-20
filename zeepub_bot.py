@@ -1428,6 +1428,73 @@ async def publicar_libro(update_or_uid, context, uid: int, titulo: str, portada_
     msg_temp_id = getattr(msg_temp, "message_id", None)
     user_state[uid]["msg_que_hacer"] = msg_temp_id
     await bot.send_message(chat_id=chat_origen, text="Selecciona una opción:", reply_markup=reply_markup)
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    /cancel - Cierra la última ventana de selección y restablece el estado del usuario
+    al estado inicial mínimo (listo para usar /start o /evil).
+    """
+    uid = update.effective_user.id
+    ensure_user(uid)
+
+    # Intentar borrar el mensaje guardado en user_state[uid]['msg_que_hacer']
+    msg_id = user_state[uid].pop("msg_que_hacer", None)
+    chat_id = None
+    # Preferir el chat de la actualización si está disponible
+    try:
+        chat_id = update.effective_chat.id
+    except Exception:
+        chat_id = None
+
+    if msg_id and chat_id:
+        try:
+            await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
+        except Exception:
+            # no fatal si no pudo borrarse
+            logging.debug("cancel: no se pudo borrar msg_que_hacer (chat=%s msg=%s)", chat_id, msg_id)
+
+    # También intentar borrar cualquier prep/menu temporales conocidos (menu_prep) si existen
+    menu_prep = user_state[uid].pop("menu_prep", None)
+    if menu_prep and isinstance(menu_prep, tuple):
+        try:
+            _chat, _msg = menu_prep
+            if _chat and _msg:
+                await context.bot.delete_message(chat_id=_chat, message_id=_msg)
+        except Exception:
+            logging.debug("cancel: no se pudo borrar menu_prep %r", menu_prep)
+
+    # Restablecer estado del usuario a valores iniciales mínimos
+    user_state[uid].update({
+        "historial": [],
+        "libros": {},
+        "colecciones": {},
+        "nav": {"prev": None, "next": None},
+        "titulo": "📚 Todas las bibliotecas",
+        "destino": None,
+        "chat_origen": None,
+        "esperando_destino_manual": False,
+        "esperando_busqueda": False,
+        "esperando_password": False,
+        "ultima_pagina": None,
+        "opds_root": OPDS_ROOT_START,
+        "opds_root_base": OPDS_ROOT_START,
+        "series_id": None,
+        "volume_id": None,
+        "msg_que_hacer": None
+    })
+
+    # Confirmación al usuario
+    try:
+        if chat_id:
+            await context.bot.send_message(chat_id=chat_id, text="✅ Operación cancelada. El bot está listo. Usa /start para comenzar.")
+        else:
+            # Fallback: usar update.message si existe
+            if getattr(update, "message", None):
+                await update.message.reply_text("✅ Operación cancelada. El bot está listo. Usa /start para comenzar.")
+    except Exception:
+        # Silenciar errores en la confirmación
+        logging.debug("cancel: no se pudo enviar mensaje de confirmación")
+
 # -----------------------
 # Start bot
 # -----------------------
@@ -1440,6 +1507,7 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("evil", evil))
     app.add_handler(CommandHandler("volver", volver))
+    app.add_handler(CommandHandler("cancel", cancel))
     app.add_handler(CallbackQueryHandler(button_handler))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_texto))
