@@ -23,7 +23,6 @@ from telegram.ext import (
 import html  # para escapar texto en HTML parse_mode
 
 import uuid
-import random
 
 # ===== CONFIGURACIÓN =====
 load_dotenv()
@@ -38,21 +37,6 @@ OPDS_ROOT_EVIL_SUFFIX = os.getenv("OPDS_ROOT_EVIL")
 KAVITA_API_KEY = None
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 SECRET_SEED = os.getenv("SECRET_SEED")
-
-# --- nueva configuración antibot desde .env ---
-# Tiempo (en minutos) que marca cuánto dura el "verified" temporal para un id
-try:
-    ANTIBOT_TTL_MINUTES = int(os.getenv("ANTIBOT_TTL_MINUTES", "10"))
-except (TypeError, ValueError):
-    ANTIBOT_TTL_MINUTES = 10
-
-# Penalización (en minutos) que se aplica cuando se exceden intentos del desafío
-try:
-    ANTIBOT_PENALTY_MINUTES = int(os.getenv("ANTIBOT_PENALTY_MINUTES", "30"))
-except (TypeError, ValueError):
-    ANTIBOT_PENALTY_MINUTES = 30
-
-logging.debug("ANTIBOT_TTL_MINUTES=%s ANTIBOT_PENALTY_MINUTES=%s", ANTIBOT_TTL_MINUTES, ANTIBOT_PENALTY_MINUTES)
 
 # Validar variables críticas
 missing = []
@@ -117,10 +101,7 @@ def ensure_user(uid: int):
             "esperando_password": False,
             "ultima_pagina": None,
             "opds_root": OPDS_ROOT_START,
-            "opds_root_base": OPDS_ROOT_START,
-            # antibot / verificación
-            "verified": False,
-            "antibot": None,  # dict: {answer, expires, attempts, msg_id(optional)}
+            "opds_root_base": OPDS_ROOT_START
         }
     return user_state[uid]
 
@@ -561,64 +542,6 @@ async def parse_opf_from_epub(data_or_path) -> Optional[Dict[str, Any]]:
         return _parse_opf_bytes(opf_bytes)
     except Exception:
         return None
-
-async def start_verification(update: Update, context: ContextTypes.DEFAULT_TYPE, uid: int):
-    """
-    Envía un simple desafío aritmético con botones. Almacena la respuesta esperada
-    en user_state[uid]['antibot'] para validación en button_handler.
-    """
-    ensure_user(uid)
-    # generar operación simple
-    a = random.randint(2, 9)
-    b = random.randint(1, 9)
-    correct = a + b
-
-    # generar opciones (asegurar unicidad y que no sean negativas)
-    opts = {correct}
-    while len(opts) < 4:
-        delta = random.choice([1, 2, 3, -1, -2, 4])
-        val = max(0, correct + delta)
-        opts.add(val)
-    opts = list(opts)
-    random.shuffle(opts)
-
-    # almacenar desafío
-    expires = datetime.datetime.now() + datetime.timedelta(minutes=10)
-    user_state[uid]["antibot"] = {
-        "answer": str(correct),
-        "expires": expires,
-        "attempts": 0
-    }
-
-    # construir teclado
-    buttons = []
-    for o in opts:
-        buttons.append([InlineKeyboardButton(str(o), callback_data=f"antibot|{o}")])
-    reply_markup = InlineKeyboardMarkup(buttons)
-
-    texto = f"🔒 Verificación anti-bot\nPara continuar, prueba que no eres un bot:\n¿Cuánto es {a} + {b} ?\n(Tienes 10 minutos)"
-    # enviar como reply o editar el callback_query si viene de uno
-    try:
-        if getattr(update, "message", None):
-            sent = await update.message.reply_text(texto, reply_markup=reply_markup)
-            # guardar id de mensaje para posible borrado/edición posterior
-            user_state[uid]["antibot"]["msg_id"] = getattr(sent, "message_id", None)
-        else:
-            # si es desde callback query, editar ese mensaje
-            await update.callback_query.edit_message_text(texto, reply_markup=reply_markup)
-            # no tenemos message_id handy aquí para guardar (callback_query.message existe)
-            try:
-                user_state[uid]["antibot"]["msg_id"] = update.callback_query.message.message_id
-            except Exception:
-                user_state[uid]["antibot"]["msg_id"] = None
-    except Exception as e:
-        logging.debug("start_verification: no se pudo enviar desafío antibot: %s", e)
-        # fallback: send plain message
-        try:
-            sent = await context.bot.send_message(chat_id=update.effective_chat.id, text=texto, reply_markup=reply_markup)
-            user_state[uid]["antibot"]["msg_id"] = getattr(sent, "message_id", None)
-        except Exception:
-            pass
 
 # -----------------------
 # Telegram send helpers (aceptan bytes o ruta a archivo)
@@ -1066,12 +989,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     root_url = OPDS_ROOT_START
     ensure_user(uid)
-
-    # Si el usuario no está verificado, iniciar verificación antibot primero
-    if not user_state[uid].get("verified", False):
-        await start_verification(update, context, uid)
-        return
-
     # Inicializar estado del usuario para el root público y mostrar el menú raíz
     user_state[uid].update({
         "titulo": "📚 Todas las bibliotecas",
@@ -1281,64 +1198,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
     uid = update.effective_user.id
     ensure_user(uid)
-
-    # --- manejo de verificación antibot ---
-    if data.startswith("antibot|"):
-        # extraer opción seleccionada
-        selected = data.split("|", 1)[1]
-        ab = user_state[uid].get("antibot")
-        now = datetime.datetime.now()
-        if not ab:
-            await query.answer("No hay desafío activo. Vuelve a intentarlo.", show_alert=True)
-            # ofrecer nuevo desafío
-            await start_verification(update, context, uid)
-            return
-
-        # expirado?
-        if ab.get("expires") and now > ab["expires"]:
-            user_state[uid]["antibot"] = None
-            await query.answer("El desafío expiró. Generando uno nuevo...", show_alert=True)
-            await start_verification(update, context, uid)
-            return
-
-        # verificar respuesta
-        if str(selected) == str(ab.get("answer")):
-            # correcto: marcar verificado, limpiar estado y mostrar colecciones raíz
-            user_state[uid]["verified"] = True
-            # intentar borrar/editar el mensaje del desafío
-            try:
-                if getattr(query, "message", None):
-                    await query.edit_message_text("✅ Verificado. Mostrando colecciones...")
-            except Exception:
-                pass
-            user_state[uid]["antibot"] = None
-
-            # Mostrar colecciones ahora (usar OPDS_ROOT_START o el root que tenga el usuario)
-            root = user_state[uid].get("opds_root", OPDS_ROOT_START)
-            # reusar mostrar_colecciones para mostrar menú raíz inmediatamente
-            await mostrar_colecciones(update, context, root, from_collection=False)
-            return
-        else:
-            # incorrecto
-            ab["attempts"] = ab.get("attempts", 0) + 1
-            user_state[uid]["antibot"] = ab
-            if ab["attempts"] >= 3:
-                # penalizar: bloquear por X minutos
-                ab["expires"] = now + datetime.timedelta(minutes=30)
-                await query.answer("Respuesta incorrecta. Demasiados intentos, inténtalo más tarde.", show_alert=True)
-            else:
-                await query.answer("Respuesta incorrecta. Inténtalo de nuevo.", show_alert=True)
-            return
-
-    # Si el usuario NO está verificado, bloquear otras acciones hasta verificar
-    if not user_state[uid].get("verified", False):
-        # permitir sólo destinos/passwords/antibot; para otras acciones pedir verificación
-        allowed_prefixes = ("destino|", "buscar", "antibot|")
-        if not any(data.startswith(p) for p in allowed_prefixes):
-            await query.answer("Debes verificar que no eres un bot antes de usar el bot. Revisa el mensaje de verificación.", show_alert=True)
-            return
-
-    # --- resto del button_handler existente (col|, lib|, nav|, back, etc.) ---
     if data.startswith("col|"):
         idx = int(data.split("|")[1])
         col = user_state[uid]["colecciones"].get(idx)
