@@ -22,6 +22,8 @@ from telegram.ext import (
 )
 import html  # para escapar texto en HTML parse_mode
 
+import uuid
+
 # ===== CONFIGURACIÓN =====
 load_dotenv()
 logging.basicConfig(level=logging.DEBUG)
@@ -29,7 +31,10 @@ logging.basicConfig(level=logging.DEBUG)
 BASE_URL = os.getenv("BASE_URL")
 OPDS_ROOT_START_SUFFIX = os.getenv("OPDS_ROOT_START")
 OPDS_ROOT_EVIL_SUFFIX = os.getenv("OPDS_ROOT_EVIL")
-KAVITA_API_KEY = os.getenv("KAVITA_API_KEY")
+# KAVITA_API_KEY = os.getenv("KAVITA_API_KEY")
+# Eliminada dependencia de la API de Kavita. Si alguien necesita usar Kavita en el futuro,
+# puede reintroducir esta variable de entorno y la lógica correspondiente.
+KAVITA_API_KEY = None
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 SECRET_SEED = os.getenv("SECRET_SEED")
 
@@ -320,6 +325,8 @@ def _parse_opf_bytes(data: bytes) -> Dict[str, Any]:
         "traductor": None,
         "publisher": None,
         "publisher_url": None,
+        # Nueva clave: sinopsis extraída desde dc:description / description / summary del OPF
+        "sinopsis": None,
     }
 
     # title (buscar por localname 'title' en DC)
@@ -379,6 +386,19 @@ def _parse_opf_bytes(data: bytes) -> Dict[str, Any]:
             genres.append(s)
     out["generos"] = genres
     out["demografia"] = dem
+
+    # --- EXTRAER sinopsis / description desde OPF (dc:description, description, summary)
+    for el in root.iter():
+        lname = local_name(el).lower()
+        if lname in ("description", "dc:description", "summary"):
+            txt = (el.text or "").strip()
+            if txt:
+                # usar la función existente de limpieza HTML básica para normalizar texto
+                try:
+                    out["sinopsis"] = limpiar_html_basico(txt)
+                except Exception:
+                    out["sinopsis"] = txt
+                break
 
     # tipo (categoria) -> dc:type
     for el in root.iter():
@@ -665,13 +685,10 @@ async def obtener_metadatos_opds(series_id: str, volume_id: str):
         if feed_title is not None and feed_title.text:
             titulo_serie = feed_title.text.strip()
             datos["titulo_serie"] = titulo_serie
-            titulo_lower = titulo_serie.lower()
-            if "[nl]" in titulo_lower:
-                datos["categoria"] = "Novela ligera"
-            elif "[nw]" in titulo_lower:
-                datos["categoria"] = "Novela web"
-            else:
-                datos["categoria"] = "Desconocida"
+            # No inferir categoría a partir del título del feed.
+            # La categoría definitiva debe venir del OPF (<dc:type>) si está presente,
+            # o de una categoría explícita en las entradas OPDS (atom:category con scheme adecuado).
+            datos["categoria"] = None
 
         for entry in root.findall("atom:entry", ns):
             for link in entry.findall("atom:link", ns):
@@ -847,30 +864,45 @@ async def mostrar_colecciones(update, context: ContextTypes.DEFAULT_TYPE, url: s
     ocultar_titulos = {"En el puente", "Listas de lectura", "Deseo leer", "Todas las colecciones"}
 
     for entry in feed.entries:
-        datos_libro = {"titulo": entry.title, "autor": getattr(entry, "author", "Desconocido")}
-        try:
-            datos_libro["href"] = getattr(entry, "link", "")
-        except Exception:
-            pass
-        tiene_sub = False
-        tiene_libro = False
+        # base info from entry
+        titulo_entry = getattr(entry, "title", "")
+        autor_entry = getattr(entry, "author", "Desconocido")
+        href_entry = getattr(entry, "link", "")
+
+        # recoger links: posible subsection, imagen y varias adquisiciones
         href_sub = None
+        portada_url = None
+        acquisition_links = []  # list of (href, link_obj)
+
         for link in getattr(entry, "links", []):
             rel = getattr(link, "rel", "")
-            href = abs_url(BASE_URL, link.href)
+            href = abs_url(BASE_URL, getattr(link, "href", ""))
             if rel == "subsection":
-                tiene_sub = True
                 href_sub = href
             if "acquisition" in rel:
-                tiene_libro = True
-                datos_libro["descarga"] = href
+                acquisition_links.append((href, link))
             if "image" in rel:
-                datos_libro["portada"] = href
-        if tiene_sub:
-            if entry.title.strip() not in ocultar_titulos:
-                colecciones.append({"titulo": entry.title, "href": href_sub})
-        elif tiene_libro:
-            libros.append(datos_libro)
+                portada_url = href
+
+        # si es subsección, añadir a colecciones (saltear títulos ocultos)
+        if href_sub:
+            if titulo_entry.strip() not in ocultar_titulos:
+                colecciones.append({"titulo": titulo_entry, "href": href_sub})
+        # si hay enlaces de adquisición, crear una entrada por cada link (una por variante)
+        elif acquisition_links:
+            for idx_acq, (acq_href, acq_link) in enumerate(acquisition_links):
+                datos_libro = {
+                    "titulo": titulo_entry,
+                    "autor": autor_entry,
+                    "href": href_entry,
+                    "descarga": acq_href
+                }
+                if portada_url:
+                    datos_libro["portada"] = portada_url
+                # opcional: añadir metadatos de la link para distinguir variantes (type/title)
+                # si quieres que se muestre una etiqueta distinta en el botón cuando hay varias variantes,
+                # puedes conservar aquí por ejemplo datos_libro["variant_info"] = getattr(acq_link, "type", "").
+                libros.append(datos_libro)
 
     keyboard = []
     keyboard.append([InlineKeyboardButton("🔍 Buscar EPUB", callback_data="buscar")])
@@ -887,12 +919,14 @@ async def mostrar_colecciones(update, context: ContextTypes.DEFAULT_TYPE, url: s
             else:
                 keyboard.append([InlineKeyboardButton(col["titulo"], callback_data=f"col|{idx}")])
     elif libros:
-        for idx, libro in enumerate(libros):
-            user_state[uid]["libros"][idx] = libro
+        # Usar claves únicas para evitar colisiones cuando varias variantes comparten nombre/filename.
+        for libro in libros:
+            key = uuid.uuid4().hex[:8]  # clave corta, suficientemente única y segura para callback_data
+            user_state[uid]["libros"][key] = libro
             nombre_archivo = os.path.basename(urlparse(libro.get("descarga", "")).path)
             nombre_archivo = unquote(nombre_archivo)
             volumen = nombre_archivo.replace(".epub", "").strip()
-            keyboard.append([InlineKeyboardButton(volumen, callback_data=f"lib|{idx}")])
+            keyboard.append([InlineKeyboardButton(volumen, callback_data=f"lib|{key}")])
 
     nav_buttons = []
     if user_state[uid]["nav"]["prev"]:
@@ -1171,8 +1205,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_state[uid]["titulo"] = f"📁 {col['titulo']}"
             await mostrar_colecciones(update, context, col["href"], from_collection=True)
     elif data.startswith("lib|"):
-        idx = int(data.split("|")[1])
-        libro = user_state[uid]["libros"].get(idx)
+        key = data.split("|", 1)[1]
+        libro = user_state[uid]["libros"].get(key)
         if libro:
             descarga = str(libro.get("descarga", ""))
             href = str(libro.get("href", ""))
@@ -1180,7 +1214,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if m:
                 user_state[uid]["series_id"] = m.group(1)
                 user_state[uid]["volume_id"] = m.group(2)
-                logging.info("DEBUG series_id: %s volume_id: %s", user_state[uid]['series_id'], user_state[uid]['volume_id'])
+                logging.info("DEBUG series_id: %s volume_id: %s", user_state[uid].get('series_id'), user_state[uid].get('volume_id'))
             else:
                 m2 = re.search(r'/series/(\d+)', descarga) or re.search(r'/series/(\d+)', href)
                 if m2:
@@ -1205,7 +1239,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     logging.debug("No se pudo borrar el mensaje del menú (quizá ya eliminado)")
 
                 try:
-                    prep_msg = await context.bot.send_message(chat_id=chat_origen, text="⏳ Preparando...")
+                    prep_msg = await context.bot.send_message(chat_origen, text="⏳ Preparando...")
                     prep_msg_id = getattr(prep_msg, "message_id", None)
                     if prep_msg_id:
                         menu_prep = (chat_origen, prep_msg_id)
@@ -1277,10 +1311,9 @@ async def volver(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def publicar_libro(update_or_uid, context, uid: int, titulo: str, portada_url: str, epub_url: str, menu_prep: tuple = None):
     """
-    Publica un libro: implementación única (equivalente al antiguo 'clasico').
-    Parámetros nuevos:
-      - menu_prep: Optional[tuple(chat_id, message_id)] mensaje temporal 'Preparando...' en el chat del menú
-                   que debe borrarse cuando se publique la portada (o al final como fallback).
+    Publica un libro: implementación única.
+    - Prioriza metadata extraída del OPF dentro del EPUB sobre lo obtenido via OPDS.
+    - menu_prep: (chat_id, message_id) del mensaje "Preparando..." en el menú, para borrarlo cuando corresponda.
     """
     bot = context.bot
     ensure_user(uid)
@@ -1292,50 +1325,46 @@ async def publicar_libro(update_or_uid, context, uid: int, titulo: str, portada_
     ultima_url = user_state[uid].get("url", root_url)
     user_state[uid]["ultima_pagina"] = ultima_url
 
-    # Obtener metadatos OPDS primeramente
+    # 1) Metadata desde OPDS (fallback)
     meta = await obtener_metadatos_opds(series_id, volume_id)
 
-    # Si hay epub disponible, descárgalo primero para extraer content.opf y enriquecer metadata.
+    # 2) Intentar descargar EPUB y extraer OPF (si hay EPUB)
     epub_downloaded = None
+    opf_meta = None
     if epub_url:
         epub_downloaded = await fetch_bytes(epub_url, timeout=120)
         if epub_downloaded:
             try:
+                # parsear OPF desde bytes o ruta temporaria
                 opf_meta = await parse_opf_from_epub(epub_downloaded)
                 if opf_meta:
-                    # Integrar opf_meta en meta (priorizar opf cuando exista)
-                    if opf_meta.get("titulo_volumen"):
-                        meta["titulo_volumen"] = opf_meta["titulo_volumen"]
-                    if opf_meta.get("titulo_serie"):
-                        meta["titulo_serie"] = opf_meta["titulo_serie"]
+                    # Normalizar: si opf contiene lista de autores, setearlo
                     if opf_meta.get("autores"):
-                        meta["autor"] = opf_meta["autores"][0] if opf_meta["autores"] else meta.get("autor")
-                        meta["autores"] = opf_meta["autores"]
-                    if opf_meta.get("ilustrador"):
-                        meta["ilustrador"] = opf_meta["ilustrador"]
-                    # agregar géneros nuevos
+                        meta["autores"] = opf_meta.get("autores") or meta.get("autores") or []
+                        # también ajustar 'autor' al primer autor si no hay 'autor' directo
+                        if opf_meta.get("autores"):
+                            meta["autor"] = opf_meta.get("autores")[0] if opf_meta.get("autores") else meta.get("autor")
+                    # Campos sencillos: preferir OPF cuando exista
+                    for key in ("titulo_serie", "titulo_volumen", "ilustrador", "categoria", "publisher", "publisher_url"):
+                        if opf_meta.get(key):
+                            meta[key] = opf_meta.get(key)
+                    # generos y demografia: si OPF ofrece listas, preferir
                     if opf_meta.get("generos"):
-                        for g in opf_meta.get("generos", []):
-                            if g not in meta["generos"]:
-                                meta["generos"].append(g)
-                    # demografía / categoria
+                        meta["generos"] = opf_meta.get("generos")
                     if opf_meta.get("demografia"):
                         meta["demografia"] = opf_meta.get("demografia")
-                    if opf_meta.get("categoria"):
-                        meta["categoria"] = opf_meta.get("categoria")
-                    # maquetadores / traductor / publisher info
+                    # maquetadores, traductor
                     if opf_meta.get("maquetadores"):
-                        meta.setdefault("maquetadores", []).extend(x for x in opf_meta.get("maquetadores", []) if x not in meta.get("maquetadores", []))
+                        meta["maquetadores"] = opf_meta.get("maquetadores")
                     if opf_meta.get("traductor"):
                         meta["traductor"] = opf_meta.get("traductor")
-                    if opf_meta.get("publisher"):
-                        meta["publisher"] = opf_meta.get("publisher")
-                    if opf_meta.get("publisher_url"):
-                        meta["publisher_url"] = opf_meta.get("publisher_url")
+                    # sinopsis: preferir OPF
+                    if opf_meta.get("sinopsis"):
+                        meta["sinopsis"] = opf_meta.get("sinopsis")
+                # Si OPF no dio ciertos campos, se mantendrán los de OPDS (ya en meta)
             except Exception as e:
-                logging.debug("Error parseando OPF: %s", e)
-
-    # calcular slug una vez integrado meta (si es posible)
+                logging.debug("publicar_libro: fallo parse OPF desde epub: %s", e)
+    # calular slug basado en meta ya fusionada (OPF > OPDS)
     slug = generar_slug_from_meta(meta)
 
     mensaje_portada = formatear_mensaje_portada(meta)
@@ -1352,26 +1381,33 @@ async def publicar_libro(update_or_uid, context, uid: int, titulo: str, portada_
                     if menu_chat and menu_msg_id:
                         await bot.delete_message(chat_id=menu_chat, message_id=menu_msg_id)
                 except Exception:
-                    logging.debug("No se pudo borrar el mensaje 'Preparando...' en el menú")
+                    # no fatal si no pudo borrarse
+                    logging.debug("publicar_libro: no se pudo borrar menu_prep luego de enviar portada")
         finally:
             _cleanup_tmp(result)
     else:
         # No hay portada: como fallback, borrar igualmente el menu_prep si existe al final del flujo.
         pass
 
-    # Sinopsis (primer intento por volumen, si falla por serie)
+    # 3) Obtener sinopsis (prioridad: OPF -> OPDS volumen -> OPDS serie)
     sinopsis_texto = None
-    if series_id and volume_id:
-        sinopsis_texto = await obtener_sinopsis_opds_volumen(series_id, volume_id)
-    if not sinopsis_texto and series_id:
-        try:
-            sinopsis_texto = await obtener_sinopsis_opds(series_id)
-        except Exception as e:
-            logging.error("Error obteniendo sinopsis por serie: %s", e)
+    # si OPF proveyó sinopsis, ya la tenemos en meta['sinopsis']
+    if meta.get("sinopsis"):
+        sinopsis_texto = meta.get("sinopsis")
+    else:
+        if series_id and volume_id:
+            sinopsis_texto = await obtener_sinopsis_opds_volumen(series_id, volume_id)
+        if not sinopsis_texto and series_id:
+            try:
+                sinopsis_texto = await obtener_sinopsis_opds(series_id)
+            except Exception as e:
+                logging.error("Error obteniendo sinopsis por serie: %s", e)
 
     if sinopsis_texto:
-        sinopsis_esc = html.escape(sinopsis_texto)
-        # Añadir slug fuera del blockquote si existe
+        try:
+            sinopsis_esc = html.escape(sinopsis_texto)
+        except Exception:
+            sinopsis_esc = sinopsis_texto
         sinopsis_suffix = f"\n#{slug}" if slug else ""
         mensaje = f"<b>Sinopsis:</b>\n<blockquote>{sinopsis_esc}</blockquote>{sinopsis_suffix}"
         await bot.send_message(chat_id=destino, text=mensaje, parse_mode="HTML")
@@ -1382,19 +1418,27 @@ async def publicar_libro(update_or_uid, context, uid: int, titulo: str, portada_
         else:
             await bot.send_message(chat_id=destino, text="Sinopsis: (no disponible)")
 
+    # Mensaje de preparación y envío del EPUB
     prep = await bot.send_message(chat_id=destino, text="⏳ Preparando archivo...")
     prep_msg_id = getattr(prep, "message_id", None)
 
-    # Envío del EPUB: usa epub_downloaded si lo obtuvimos, sino descarga ahora
     epub_to_send = epub_downloaded
     if not epub_to_send and epub_url:
         epub_to_send = await fetch_bytes(epub_url, timeout=120)
 
     if epub_to_send:
         try:
+            # Mantener el nombre de archivo tal cual se descarga de la URL (no modificarlo)
             nombre_archivo = os.path.basename(urlparse(epub_url).path) or "archivo.epub"
             nombre_archivo = unquote(nombre_archivo)
-            caption = titulo + (f"\n#{slug}" if slug else "")
+
+            # Construir caption idéntico a la "primera parte" del mensaje de portada:
+            # preferir meta['titulo_volumen'] extraído del OPF, si no existe usar el argumento 'titulo'
+            caption_title = (meta.get("titulo_volumen") or titulo or "").strip()
+            # Caption final: título + salto + #slug (igual a la portada)
+            caption = caption_title + (f"\n#{slug}" if slug else "")
+
+            # Enviar documento usando el caption construido y manteniendo el nombre de archivo original
             await send_doc_bytes(bot, destino, caption, epub_to_send, filename=nombre_archivo)
         finally:
             _cleanup_tmp(epub_to_send)
@@ -1406,13 +1450,16 @@ async def publicar_libro(update_or_uid, context, uid: int, titulo: str, portada_
         except Exception:
             pass
 
-    # Como fallback final, si aún existe el menu_prep (por ejemplo no había portada),
+    # Fallback final: si aún existe el menu_prep (por ejemplo no había portada),
     # intentar borrarlo ahora para no dejar mensajes huérfanos.
     if menu_prep and isinstance(menu_prep, tuple):
         try:
             menu_chat, menu_msg_id = menu_prep
             if menu_chat and menu_msg_id:
-                await bot.delete_message(chat_id=menu_chat, message_id=menu_msg_id)
+                try:
+                    await bot.delete_message(chat_id=menu_chat, message_id=menu_msg_id)
+                except Exception:
+                    pass
         except Exception:
             # ya eliminado o imposible de borrar; no fatal
             pass
