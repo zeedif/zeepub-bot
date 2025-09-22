@@ -7,7 +7,7 @@ from typing import Optional, Dict, Any
 
 import feedparser
 
-from http.fetcher import fetch_bytes, cleanup_tmp
+from http_utils.fetcher import fetch_bytes, cleanup_tmp
 from config import OPDS_ROOT_EVIL
 
 

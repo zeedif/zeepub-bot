@@ -2,7 +2,7 @@ import logging
 from urllib.parse import urlparse, unquote
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
-from http.fetcher import fetch_bytes, cleanup_tmp
+from http_utils.fetcher import fetch_bytes, cleanup_tmp
 from telegram_utils.sender import send_photo_bytes, send_doc_bytes
 from telegram_utils.formatter import generar_slug_from_meta, formatear_mensaje_portada, escapar_html
 from opds.parser import obtener_metadatos_opds
@@ -10,10 +10,10 @@ from epub.opf_parser import parse_opf_from_epub
 from epub.extractor import obtener_sinopsis_opds, obtener_sinopsis_opds_volumen
 from config import OPDS_ROOT_START, OPDS_ROOT_EVIL
 from . import ensure_user, user_state
-from .navigation import mostrar_colecciones
 
 
 async def set_destino(update, context: ContextTypes.DEFAULT_TYPE):
+    from .navigation import mostrar_colecciones
     query = update.callback_query
     await query.answer()
     uid = update.effective_user.id

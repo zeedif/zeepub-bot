@@ -12,7 +12,7 @@ from handlers import (
     button_handler, abrir_zeepubs, buscar_epub,
     set_destino, recibir_texto
 )
-from http.session import get_global_session
+from http_utils.session import get_global_session
 
 
 async def _close_global_session():

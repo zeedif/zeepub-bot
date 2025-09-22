@@ -7,7 +7,6 @@ from config import BASE_URL, OPDS_ROOT_START, OPDS_ROOT_EVIL
 from opds.parser import parse_feed_from_url
 from opds.helpers import abs_url, norm_string
 from . import ensure_user, user_state
-from .publish import publicar_libro
 
 
 async def mostrar_colecciones(update, context: ContextTypes.DEFAULT_TYPE, url: str, from_collection: bool = False):
@@ -180,6 +179,7 @@ async def abrir_zeepubs(update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def button_handler(update, context: ContextTypes.DEFAULT_TYPE):
+    from .publish import publicar_libro
     query = update.callback_query
     await query.answer()
     data = query.data

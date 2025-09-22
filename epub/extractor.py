@@ -1,7 +1,7 @@
 import logging
 import xml.etree.ElementTree as ET
 
-from http.fetcher import fetch_bytes, cleanup_tmp
+from http_utils.fetcher import fetch_bytes, cleanup_tmp
 from telegram_utils.formatter import limpiar_html_basico
 from config import OPDS_ROOT_EVIL
 

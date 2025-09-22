@@ -3,7 +3,7 @@ import io
 import logging
 from telegram import InputFile
 
-from http.fetcher import cleanup_tmp
+from http_utils.fetcher import cleanup_tmp
 
 
 async def send_photo_bytes(bot, chat_id, caption, data_or_path, filename="photo.jpg"):
