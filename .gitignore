@@ -1,8 +1,31 @@
-# Ignorar todo por defecto
+# Ignore everything by default
 *
 
-# Pero no ignorar este archivo específico
+# Allow directory traversal so we can un-ignore specific files
+!*/
+
+# Don’t ignore the gitignore itself
+!.gitignore
+
+# Legacy main script (if you still have it)
 !zeepub_bot.py
 
-# No ignorar tampoco el propio .gitignore
-!.gitignore
+# New top-level files
+!config.py
+!__main__.py
+
+# New packages and their .py files
+!http/
+!http/*.py
+
+!opds/
+!opds/*.py
+
+!epub/
+!epub/*.py
+
+!telegram_utils/
+!telegram_utils/*.py
+
+!handlers/
+!handlers/*.py
