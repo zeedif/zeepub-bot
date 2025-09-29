@@ -63,6 +63,14 @@ _GLOBAL_AIOSESSION = None
 MAX_IN_MEMORY_BYTES = 10 * 1024 * 1024  # 10 MB threshold; ajustar si hace falta
 DEFAULT_AIOHTTP_TIMEOUT = 60  # segundos por defecto para la sesión global
 
+# — Lock por usuario para serializar publicaciones
+publish_locks: Dict[int, asyncio.Lock] = {}
+
+def _get_publish_lock(uid: int) -> asyncio.Lock:
+    if uid not in publish_locks:
+        publish_locks[uid] = asyncio.Lock()
+    return publish_locks[uid]
+
 def _cleanup_tmp(path: str):
     "Borra un fichero temporal si path es ruta existente."
     if isinstance(path, str) and os.path.exists(path):
@@ -1309,172 +1317,125 @@ async def volver(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("No hay nivel anterior disponible.")
 
-async def publicar_libro(update_or_uid, context, uid: int, titulo: str, portada_url: str, epub_url: str, menu_prep: tuple = None):
-    """
-    Publica un libro: implementación única.
-    - Prioriza metadata extraída del OPF dentro del EPUB sobre lo obtenido via OPDS.
-    - menu_prep: (chat_id, message_id) del mensaje "Preparando..." en el menú, para borrarlo cuando corresponda.
-    """
+async def publicar_libro(update_or_uid, context, uid: int, titulo: str, portada_url: str,
+                         epub_url: str, menu_prep: tuple = None):
     bot = context.bot
     ensure_user(uid)
-    destino = user_state[uid].get("destino") or user_state[uid].get("chat_origen")
-    chat_origen = user_state[uid].get("chat_origen")
-    series_id = user_state[uid].get("series_id")
-    volume_id = user_state[uid].get("volume_id")
-    root_url = user_state[uid].get("opds_root", OPDS_ROOT_START)
-    ultima_url = user_state[uid].get("url", root_url)
-    user_state[uid]["ultima_pagina"] = ultima_url
 
-    # 1) Metadata desde OPDS (fallback)
-    meta = await obtener_metadatos_opds(series_id, volume_id)
+    # Serializa publicaciones por usuario
+    lock = _get_publish_lock(uid)
+    async with lock:
+        destino     = user_state[uid].get("destino") or user_state[uid].get("chat_origen")
+        chat_origen = user_state[uid].get("chat_origen")
+        series_id   = user_state[uid].get("series_id")
+        volume_id   = user_state[uid].get("volume_id")
+        root_url    = user_state[uid].get("opds_root", OPDS_ROOT_START)
+        ultima_url  = user_state[uid].get("url", root_url)
+        user_state[uid]["ultima_pagina"] = ultima_url
 
-    # 2) Intentar descargar EPUB y extraer OPF (si hay EPUB)
-    epub_downloaded = None
-    opf_meta = None
-    if epub_url:
-        epub_downloaded = await fetch_bytes(epub_url, timeout=120)
-        if epub_downloaded:
-            try:
-                # parsear OPF desde bytes o ruta temporaria
-                opf_meta = await parse_opf_from_epub(epub_downloaded)
-                if opf_meta:
-                    # Normalizar: si opf contiene lista de autores, setearlo
-                    if opf_meta.get("autores"):
-                        meta["autores"] = opf_meta.get("autores") or meta.get("autores") or []
-                        # también ajustar 'autor' al primer autor si no hay 'autor' directo
+        # 1) Metadata OPDS de respaldo
+        meta = await obtener_metadatos_opds(series_id, volume_id)
+
+        # 2) Descargar EPUB y extraer OPF
+        epub_downloaded = None
+        opf_meta = None
+        if epub_url:
+            epub_downloaded = await fetch_bytes(epub_url, timeout=120)
+            if epub_downloaded:
+                try:
+                    opf_meta = await parse_opf_from_epub(epub_downloaded)
+                    if opf_meta:
+                        # Fusionar campos OPF > OPDS
                         if opf_meta.get("autores"):
-                            meta["autor"] = opf_meta.get("autores")[0] if opf_meta.get("autores") else meta.get("autor")
-                    # Campos sencillos: preferir OPF cuando exista
-                    for key in ("titulo_serie", "titulo_volumen", "ilustrador", "categoria", "publisher", "publisher_url"):
-                        if opf_meta.get(key):
-                            meta[key] = opf_meta.get(key)
-                    # generos y demografia: si OPF ofrece listas, preferir
-                    if opf_meta.get("generos"):
-                        meta["generos"] = opf_meta.get("generos")
-                    if opf_meta.get("demografia"):
-                        meta["demografia"] = opf_meta.get("demografia")
-                    # maquetadores, traductor
-                    if opf_meta.get("maquetadores"):
-                        meta["maquetadores"] = opf_meta.get("maquetadores")
-                    if opf_meta.get("traductor"):
-                        meta["traductor"] = opf_meta.get("traductor")
-                    # sinopsis: preferir OPF
-                    if opf_meta.get("sinopsis"):
-                        meta["sinopsis"] = opf_meta.get("sinopsis")
-                # Si OPF no dio ciertos campos, se mantendrán los de OPDS (ya en meta)
-            except Exception as e:
-                logging.debug("publicar_libro: fallo parse OPF desde epub: %s", e)
-    # calular slug basado en meta ya fusionada (OPF > OPDS)
-    slug = generar_slug_from_meta(meta)
-
-    mensaje_portada = formatear_mensaje_portada(meta)
-
-    # Enviar portada con el mensaje (si existe)
-    if portada_url:
-        result = await fetch_bytes(portada_url, timeout=15)
-        try:
-            sent_photo = await send_photo_bytes(bot, destino, mensaje_portada, result, filename="portada.jpg")
-            # Si se pasó menu_prep (mensaje "Preparando..." en el menú), eliminarlo ahora que la portada fue enviada
-            if menu_prep and isinstance(menu_prep, tuple):
-                try:
-                    menu_chat, menu_msg_id = menu_prep
-                    if menu_chat and menu_msg_id:
-                        await bot.delete_message(chat_id=menu_chat, message_id=menu_msg_id)
+                            meta["autores"] = opf_meta["autores"]
+                            meta["autor"]   = opf_meta["autores"][0]
+                        for key in ("titulo_serie","titulo_volumen","ilustrador",
+                                    "categoria","publisher","publisher_url"):
+                            if opf_meta.get(key):
+                                meta[key] = opf_meta[key]
+                        if opf_meta.get("generos"):
+                            meta["generos"] = opf_meta["generos"]
+                        if opf_meta.get("demografia"):
+                            meta["demografia"] = opf_meta["demografia"]
+                        if opf_meta.get("maquetadores"):
+                            meta["maquetadores"] = opf_meta["maquetadores"]
+                        if opf_meta.get("traductor"):
+                            meta["traductor"] = opf_meta["traductor"]
+                        if opf_meta.get("sinopsis"):
+                            meta["sinopsis"] = opf_meta["sinopsis"]
                 except Exception:
-                    # no fatal si no pudo borrarse
-                    logging.debug("publicar_libro: no se pudo borrar menu_prep luego de enviar portada")
-        finally:
-            _cleanup_tmp(result)
-    else:
-        # No hay portada: como fallback, borrar igualmente el menu_prep si existe al final del flujo.
-        pass
+                    logging.debug("publicar_libro: fallo parse OPF")
 
-    # 3) Obtener sinopsis (prioridad: OPF -> OPDS volumen -> OPDS serie)
-    sinopsis_texto = None
-    # si OPF proveyó sinopsis, ya la tenemos en meta['sinopsis']
-    if meta.get("sinopsis"):
-        sinopsis_texto = meta.get("sinopsis")
-    else:
-        if series_id and volume_id:
-            sinopsis_texto = await obtener_sinopsis_opds_volumen(series_id, volume_id)
-        if not sinopsis_texto and series_id:
+        slug            = generar_slug_from_meta(meta)
+        mensaje_portada = formatear_mensaje_portada(meta)
+
+        # 3) Enviar PORTADA y borrar “Preparando…” del menú
+        sent_photo = None
+        if portada_url:
+            tmp = await fetch_bytes(portada_url, timeout=15)
             try:
-                sinopsis_texto = await obtener_sinopsis_opds(series_id)
-            except Exception as e:
-                logging.error("Error obteniendo sinopsis por serie: %s", e)
-
-    if sinopsis_texto:
-        try:
-            sinopsis_esc = html.escape(sinopsis_texto)
-        except Exception:
-            sinopsis_esc = sinopsis_texto
-        sinopsis_suffix = f"\n#{slug}" if slug else ""
-        mensaje = f"<b>Sinopsis:</b>\n<blockquote>{sinopsis_esc}</blockquote>{sinopsis_suffix}"
-        await bot.send_message(chat_id=destino, text=mensaje, parse_mode="HTML")
-    else:
-        # si no hay sinopsis, aún podemos poner el slug
-        if slug:
-            await bot.send_message(chat_id=destino, text=f"Sinopsis: (no disponible)\n#{slug}")
-        else:
-            await bot.send_message(chat_id=destino, text="Sinopsis: (no disponible)")
-
-    # Mensaje de preparación y envío del EPUB
-    prep = await bot.send_message(chat_id=destino, text="⏳ Preparando archivo...")
-    prep_msg_id = getattr(prep, "message_id", None)
-
-    epub_to_send = epub_downloaded
-    if not epub_to_send and epub_url:
-        epub_to_send = await fetch_bytes(epub_url, timeout=120)
-
-    if epub_to_send:
-        try:
-            # Mantener el nombre de archivo tal cual se descarga de la URL (no modificarlo)
-            nombre_archivo = os.path.basename(urlparse(epub_url).path) or "archivo.epub"
-            nombre_archivo = unquote(nombre_archivo)
-
-            # Construir caption idéntico a la "primera parte" del mensaje de portada:
-            # preferir meta['titulo_volumen'] extraído del OPF, si no existe usar el argumento 'titulo'
-            caption_title = (meta.get("titulo_volumen") or titulo or "").strip()
-            # Caption final: título + salto + #slug (igual a la portada)
-            caption = caption_title + (f"\n#{slug}" if slug else "")
-
-            # Enviar documento usando el caption construido y manteniendo el nombre de archivo original
-            await send_doc_bytes(bot, destino, caption, epub_to_send, filename=nombre_archivo)
-        finally:
-            _cleanup_tmp(epub_to_send)
-
-    # borrar el mensaje prep en destino
-    if prep_msg_id:
-        try:
-            await bot.delete_message(chat_id=destino, message_id=prep_msg_id)
-        except Exception:
-            pass
-
-    # Fallback final: si aún existe el menu_prep (por ejemplo no había portada),
-    # intentar borrarlo ahora para no dejar mensajes huérfanos.
-    if menu_prep and isinstance(menu_prep, tuple):
-        try:
-            menu_chat, menu_msg_id = menu_prep
-            if menu_chat and menu_msg_id:
-                try:
+                sent_photo = await send_photo_bytes(bot, destino, mensaje_portada, tmp, filename="portada.jpg")
+                if menu_prep:
+                    menu_chat, menu_msg_id = menu_prep
                     await bot.delete_message(chat_id=menu_chat, message_id=menu_msg_id)
-                except Exception:
-                    pass
+            finally:
+                _cleanup_tmp(tmp)
+
+        # 4) Enviar SINOPSIS como mensaje independiente (sin reply_to_message_id)
+        sinopsis_texto = meta.get("sinopsis")
+        if not sinopsis_texto:
+            if series_id and volume_id:
+                sinopsis_texto = await obtener_sinopsis_opds_volumen(series_id, volume_id)
+            if not sinopsis_texto and series_id:
+                sinopsis_texto = await obtener_sinopsis_opds(series_id)
+
+        if sinopsis_texto:
+            sinopsis_esc = html.escape(sinopsis_texto)
+            texto = (
+                "<b>Sinopsis:</b>\n"
+                f"<blockquote>{sinopsis_esc}</blockquote>"
+                + (f"\n#{slug}" if slug else "")
+            )
+            await bot.send_message(chat_id=destino, text=texto, parse_mode="HTML")
+        else:
+            fallback = f"Sinopsis: (no disponible){'\\n#'+slug if slug else ''}"
+            await bot.send_message(chat_id=destino, text=fallback)
+
+        # 5) Enviar EPUB
+        prep    = await bot.send_message(chat_id=destino, text="⏳ Preparando archivo...")
+        prep_id = prep.message_id
+
+        archivo = epub_downloaded or await fetch_bytes(epub_url, timeout=120)
+        if archivo:
+            try:
+                fname   = unquote(os.path.basename(urlparse(epub_url).path)) or "archivo.epub"
+                caption = (meta.get("titulo_volumen") or titulo).strip()
+                if slug:
+                    caption += f"\n#{slug}"
+                await send_doc_bytes(bot, destino, caption, archivo, filename=fname)
+            finally:
+                _cleanup_tmp(archivo)
+
+        # limpiar mensaje “Preparando archivo…”
+        try:
+            await bot.delete_message(chat_id=destino, message_id=prep_id)
         except Exception:
-            # ya eliminado o imposible de borrar; no fatal
             pass
 
-    # Menú opciones (enviar al chat de origen)
-    keyboard = [
-        [InlineKeyboardButton("📚 Volver a categorías", callback_data="volver_colecciones")],
-        [InlineKeyboardButton("↩️ Volver a la página anterior", callback_data="volver_ultima")],
-        [InlineKeyboardButton("❌ Cerrar", callback_data="cerrar")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    msg_temp = await bot.send_message(chat_id=chat_origen, text="¿Qué quieres hacer ahora?")
-    msg_temp_id = getattr(msg_temp, "message_id", None)
-    user_state[uid]["msg_que_hacer"] = msg_temp_id
-    await bot.send_message(chat_id=chat_origen, text="Selecciona una opción:", reply_markup=reply_markup)
+        # 6) Menú final de opciones
+        kb = [
+            [InlineKeyboardButton("📚 Volver a categorías",            callback_data="volver_colecciones")],
+            [InlineKeyboardButton("↩️ Volver a la página anterior", callback_data="volver_ultima")],
+            [InlineKeyboardButton("❌ Cerrar",                        callback_data="cerrar")],
+        ]
+        msg = await bot.send_message(chat_id=chat_origen, text="¿Qué quieres hacer ahora?")
+        user_state[uid]["msg_que_hacer"] = msg.message_id
+        await bot.send_message(
+            chat_id=chat_origen,
+            text="Selecciona una opción:",
+            reply_markup=InlineKeyboardMarkup(kb)
+        )
+
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
