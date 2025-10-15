@@ -1,0 +1,157 @@
+
+<img src="https://r2cdn.perplexity.ai/pplx-full-logo-primary-dark%402x.png" style="height:64px;margin-right:32px"/>
+
+# Zeepub Bot
+
+**Zeepub Bot** es un bot de Telegram que permite buscar y descargar libros electrónicos en formato EPUB de manera sencilla y automática. Integra búsqueda por palabra clave, navegación por colecciones OPDS y un sistema de límite de descargas por usuario.
+
+***
+
+## 🚀 Características
+
+- **Búsqueda de ebooks** por palabra clave
+- **Navegación** en catálogos OPDS
+- **Descarga directa** de archivos EPUB
+- **Límite de descargas** por usuario para evitar abusos
+- **Arquitectura modular** con plugins
+- **Configuración** a través de variables de entorno
+
+***
+
+## 📁 Estructura del proyecto
+
+```text
+├── main.py                    # Punto de entrada del bot
+├── project-init.py            # Script de inicialización
+├── README.md                  # Documentación del proyecto
+├── .gitignore                 # Configuración de archivos ignorados
+├── config/                    # Configuración del bot
+│   ├── config_settings.py
+│   └── settings.py
+├── core/                      # Núcleo de la lógica
+│   ├── bot.py
+│   ├── session_manager.py
+│   └── state_manager.py
+├── handlers/                  # Manejadores de comandos y mensajes
+│   ├── button_handler.py
+│   ├── command_handlers.py
+│   ├── message_handlers.py
+│   └── start_and_auth.py
+├── opds/                      # Parser OPDS para catálogos
+│   ├── helpers.py
+│   └── parser.py
+├── plugins/                   # Plugins para extender funcionalidades
+│   ├── base_plugin.py
+│   └── plugin_manager.py
+├── services/                  # Servicios (EPUB, metadata, Telegram)
+│   ├── epub_service.py
+│   └── telegram_service.py
+├── utils/                     # Utilidades compartidas
+│   ├── decorators.py
+│   └── http_client.py
+└── tests/                     # Pruebas unitarias
+    └── tests-init.py
+```
+
+
+***
+
+## 🛠️ Requisitos
+
+- Python **3.10** o superior
+- Token de Telegram (obtenido desde BotFather)
+- URL de un catálogo OPDS compatible
+
+***
+
+## 🔧 Instalación
+
+1. Clonar el repositorio:
+
+```bash
+git clone https://github.com/devil1210/zeepub-bot.git
+cd zeepub-bot
+```
+
+2. Crear y activar entorno virtual:
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+```
+
+3. Instalar dependencias:
+
+```bash
+pip install -r requirements.txt
+```
+
+4. Configurar variables de entorno:
+
+```bash
+cp .env.example .env
+nano .env
+```
+
+    - `TELEGRAM_TOKEN`
+    - `OPDS_URL`
+    - `MAX_DOWNLOADS`, `WINDOW_HOURS`
+5. Inicializar base de datos o configuraciones:
+
+```bash
+python project-init.py
+```
+
+
+***
+
+## ▶️ Uso
+
+Iniciar el bot:
+
+```bash
+python main.py
+```
+
+- Envía `/start` para ver el menú principal.
+- Utiliza `/search <palabra>` para buscar ebooks.
+- Descarga directamente desde el chat.
+
+***
+
+## ✅ Tests
+
+Ejecutar pruebas unitarias:
+
+```bash
+pytest tests/
+```
+
+
+***
+
+## ⚙️ Plugins y Personalización
+
+1. Crear nuevo plugin en `plugins/` heredando de `BasePlugin`.
+2. Registrar en `plugins/plugin_manager.py`.
+3. Ajustar o añadir handlers y servicios según la funcionalidad.
+
+***
+
+## 🤝 Contribuciones
+
+1. Haz fork del repo.
+2. Crea una rama:
+
+```bash
+git checkout -b feature/tu-funcion
+```
+
+3. Realiza cambios y añade pruebas.
+4. Envía un Pull Request describiendo tus mejoras.
+
+***
+
+## 📜 Licencia
+
+Este proyecto está bajo la licencia **MIT**. Consulte el archivo `LICENSE` para más detalles.
