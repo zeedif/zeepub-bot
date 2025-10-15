@@ -11,21 +11,34 @@
 !zeepub_bot.py
 
 # New top-level files
-!config.py
-!__main__.py
+!main.py
+!project-init.py
+!__init__.py
 
 # New packages and their .py files
-!http/
-!http/*.py
+!bot/
+!bot/*.py
+
+!config/
+!config/*.py
+
+!core/
+!core/*.py
+
+!handlers/
+!handlers/*.py
+
+!plugins/
+!plugins/*.py
+
+!services/
+!services/*.py
 
 !opds/
 !opds/*.py
 
-!epub/
-!epub/*.py
+!tests/
+!tests/*.py
 
-!telegram_utils/
-!telegram_utils/*.py
-
-!handlers/
-!handlers/*.py
+!utils/
+!utils/*.py
