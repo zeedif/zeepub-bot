@@ -1,6 +1,3 @@
-
-<img src="https://r2cdn.perplexity.ai/pplx-full-logo-primary-dark%402x.png" style="height:64px;margin-right:32px"/>
-
 # Zeepub Bot
 
 **Zeepub Bot** es un bot de Telegram que permite buscar y descargar libros electrónicos en formato EPUB de manera sencilla y automática. Integra búsqueda por palabra clave, navegación por colecciones OPDS y un sistema de límite de descargas por usuario.
