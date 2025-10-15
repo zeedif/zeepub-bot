@@ -42,5 +42,22 @@
 
 !utils/
 !utils/*.py
-main.py
-main.py
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Logs
+*.log
+
+# Editor config
+.vscode/
+.idea/
+
+# Backups
+*.bak
+
+# Environment
+.env
