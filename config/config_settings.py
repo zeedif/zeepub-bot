@@ -1,74 +1,93 @@
+# config/config_settings.py
+
 import os
 import hashlib
-import datetime
+from datetime import datetime
+from dataclasses import dataclass, field
+from typing import List, Tuple, Set
 from dotenv import load_dotenv
 
-class Config:
-    """Configuration class for the bot"""
-    
-    def __init__(self):
-        # Load environment variables
-        load_dotenv()
-        
-        # Core configuration
-        self.BASE_URL = os.getenv("BASE_URL")
-        self.OPDS_ROOT_START_SUFFIX = os.getenv("OPDS_ROOT_START")
-        self.OPDS_ROOT_EVIL_SUFFIX = os.getenv("OPDS_ROOT_EVIL")
-        self.TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-        self.SECRET_SEED = os.getenv("SECRET_SEED")
+load_dotenv()
 
-        # Derived URLs
-        if self.BASE_URL and self.OPDS_ROOT_START_SUFFIX:
-            self.OPDS_ROOT_START = f"{self.BASE_URL}{self.OPDS_ROOT_START_SUFFIX}"
-        else:
-            self.OPDS_ROOT_START = None
-            
-        if self.BASE_URL and self.OPDS_ROOT_EVIL_SUFFIX:
-            self.OPDS_ROOT_EVIL = f"{self.BASE_URL}{self.OPDS_ROOT_EVIL_SUFFIX}"
-        else:
-            self.OPDS_ROOT_EVIL = None
-        
-        # HTTP settings
-        self.MAX_IN_MEMORY_BYTES = 10 * 1024 * 1024  # 10 MB
-        self.DEFAULT_AIOHTTP_TIMEOUT = 60  # seconds
-        
-        # Legacy Kavita API (not used but kept for compatibility)
-        self.KAVITA_API_KEY = None
+@dataclass
+class BotConfig:
+    TELEGRAM_TOKEN: str = os.getenv("TELEGRAM_TOKEN", "")
+    BASE_URL: str = os.getenv("BASE_URL", "")
+    OPDS_ROOT_START_SUFFIX: str = os.getenv("OPDS_ROOT_START", "")
+    OPDS_ROOT_EVIL_SUFFIX: str = os.getenv("OPDS_ROOT_EVIL", "")
+    SECRET_SEED: str = os.getenv("SECRET_SEED", "")
 
-        # New variables for downloads limit
-        self.MAX_DOWNLOADS_PER_HOUR = int(os.getenv("MAX_DOWNLOADS_PER_HOUR", "5"))
-        
-        download_whitelist_env = os.getenv("DOWNLOAD_WHITELIST", "")
-        if download_whitelist_env:
-            self.DOWNLOAD_WHITELIST = [int(uid.strip()) for uid in download_whitelist_env.split(",") if uid.strip().isdigit()]
-        else:
-            self.DOWNLOAD_WHITELIST = []
-    
-    def validate_critical_config(self):
-        """Validate that all critical configuration is present"""
-        missing = []
-        
+    # Administradores (no tienen descargas ilimitadas aquí)
+    ADMIN_USERS: Set[int] = field(default_factory=lambda: {
+        int(x.strip())
+        for x in os.getenv("ADMIN_USERS", "").split(",")
+        if x.strip().isdigit()
+    })
+
+    # Listas de usuarios con distintos niveles
+    WHITELIST: Set[int] = field(default_factory=lambda: {
+        int(x.strip())
+        for x in os.getenv("WHITELIST", "").split(",")
+        if x.strip().isdigit()
+    })
+    VIP_LIST: Set[int] = field(default_factory=lambda: {
+        int(x.strip())
+        for x in os.getenv("VIP_LIST", "").split(",")
+        if x.strip().isdigit()
+    })
+    PREMIUM_LIST: Set[int] = field(default_factory=lambda: {
+        int(x.strip())
+        for x in os.getenv("PREMIUM_LIST", "").split(",")
+        if x.strip().isdigit()
+    })
+
+    # Límites por hora
+    MAX_DOWNLOADS_PER_DAY: int = int(os.getenv("MAX_DOWNLOADS_PER_DAY", "5"))
+    WHITELIST_DOWNLOADS_PER_DAY: int = int(os.getenv("WHITELIST_DOWNLOADS_PER_DAY", "10"))
+    VIP_DOWNLOADS_PER_DAY: int = int(os.getenv("VIP_DOWNLOADS_PER_DAY", "20"))
+
+    # Otros ajustes
+    MAX_IN_MEMORY_BYTES: int = int(os.getenv("MAX_IN_MEMORY_BYTES", "10485760"))
+    DEFAULT_AIOHTTP_TIMEOUT: int = int(os.getenv("AIOHTTP_TIMEOUT", "60"))
+    MAX_CONCURRENT_REQUESTS: int = int(os.getenv("MAX_CONCURRENT_REQUESTS", "20"))
+    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO").upper()
+    ENABLE_PLUGINS: bool = os.getenv("ENABLE_PLUGINS", "true").lower() == "true"
+    PLUGIN_DIRECTORY: str = os.getenv("PLUGIN_DIRECTORY", "plugins")
+
+
+    @property
+    def OPDS_ROOT_START(self) -> str:
+        return f"{self.BASE_URL}{self.OPDS_ROOT_START_SUFFIX}"
+
+    @property
+    def OPDS_ROOT_EVIL(self) -> str:
+        return f"{self.BASE_URL}{self.OPDS_ROOT_EVIL_SUFFIX}"
+
+    def validate(self) -> Tuple[bool, List[str]]:
+        errors: List[str] = []
         if not self.TELEGRAM_TOKEN:
-            missing.append("TELEGRAM_TOKEN")
+            errors.append("TELEGRAM_TOKEN")
         if not self.BASE_URL:
-            missing.append("BASE_URL")
+            errors.append("BASE_URL")
         if not self.OPDS_ROOT_START_SUFFIX:
-            missing.append("OPDS_ROOT_START")
+            errors.append("OPDS_ROOT_START")
         if not self.OPDS_ROOT_EVIL_SUFFIX:
-            missing.append("OPDS_ROOT_EVIL")
-        
-        if missing:
-            raise SystemExit(f"Faltan variables de entorno: {', '.join(missing)}")
-    
-    def get_six_hour_password(self):
-        """Generate a password that changes every 6 hours"""
+            errors.append("OPDS_ROOT_EVIL")
         if not self.SECRET_SEED:
-            raise ValueError("SECRET_SEED no configurado")
-            
-        now = datetime.datetime.now()
-        bloque = now.hour // 6
-        raw = f"{self.SECRET_SEED}{now.year}-{now.month}-{now.day}-B{bloque}"
-        return hashlib.sha256(raw.encode()).hexdigest()[:8]
+            errors.append("SECRET_SEED")
+        return (len(errors) == 0, errors)
 
-# Create a global config instance
-config = Config()
+    def get_six_hour_password(self) -> str:
+        """
+        Genera la contraseña de 8 caracteres para el modo 'evil',
+        igual al script PowerShell:
+          raw = f"{seed}{Year}-{Month}-{Day}-B{block}"
+        """
+        now = datetime.now()
+        block = now.hour // 6
+        # Sin guión tras el seed, para coincidir con PowerShell
+        raw = f"{self.SECRET_SEED}{now.year}-{now.month}-{now.day}-B{block}"
+        sha = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+        return sha[:8]
+
+config = BotConfig()

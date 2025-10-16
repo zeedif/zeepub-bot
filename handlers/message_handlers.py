@@ -1,76 +1,89 @@
 # handlers/message_handlers.py
+
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
-
-from config.config_settings import config
 from core.state_manager import state_manager
-from services.opds_service import mostrar_colecciones, parse_feed_from_url
+from services.opds_service import mostrar_colecciones
+from config.config_settings import config
 from utils.helpers import build_search_url
+from utils.http_client import parse_feed_from_url
 
 logger = logging.getLogger(__name__)
 
 async def recibir_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle text messages"""
+    """Maneja mensajes de texto cuando se espera input del usuario."""
     uid = update.effective_user.id
-    user_state = state_manager.get_user_state(uid)
-    texto = update.message.text.strip()
-    
-    # Handle password input
-    if user_state.get("esperando_password"):
-        if texto == config.get_six_hour_password():
-            state_manager.update_user_state(uid, {"esperando_password": False})
+    st = state_manager.get_user_state(uid)
+    text = update.message.text.strip()
+
+    # 1) Contraseña para modo 'evil'
+    if st.get("esperando_password"):
+        st["esperando_password"] = False
+        if text == config.get_six_hour_password():
             keyboard = [
-                [InlineKeyboardButton("📍 Publicar aquí", callback_data="destino|aqui")],
-                [InlineKeyboardButton("📢 ZeePubBotTest", callback_data="destino|@ZeePubBotTest")],
+                [InlineKeyboardButton("📍 Aquí", callback_data="destino|aqui")],
+                [InlineKeyboardButton("📢 BotTest", callback_data="destino|@ZeePubBotTest")],
                 [InlineKeyboardButton("📢 ZeePubs", callback_data="destino|@ZeePubs")],
-                [InlineKeyboardButton("✏️ Otro destino", callback_data="destino|otro")]
+                [InlineKeyboardButton("✏️ Otro", callback_data="destino|otro")],
             ]
-            await update.message.reply_text(
-                "✅ Contraseña correcta. ¿Dónde quieres publicar los libros?",
-                reply_markup=InlineKeyboardMarkup(keyboard)
+            # Editar el prompt original si se guardó
+            msg_id = st.get("msg_esperando_pwd")
+            if msg_id:
+                try:
+                    await context.bot.edit_message_text(
+                        chat_id=update.effective_chat.id,
+                        message_id=msg_id,
+                        text="✅ Contraseña correcta. Elige destino:",
+                        reply_markup=InlineKeyboardMarkup(keyboard),
+                    )
+                except Exception:
+                    await context.bot.send_message(
+                        chat_id=update.effective_chat.id,
+                        text="✅ Contraseña correcta. Elige destino:",
+                        reply_markup=InlineKeyboardMarkup(keyboard),
+                    )
+            else:
+                await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text="✅ Contraseña correcta. Elige destino:",
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                )
+        else:
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="❌ Contraseña incorrecta."
             )
-        else:
-            state_manager.update_user_state(uid, {"esperando_password": False})
-            await update.message.reply_text("❌ Contraseña incorrecta. Volviendo al modo normal…")
-            # Import here to avoid circular import
-            from handlers.command_handlers import start
-            await start(update, context)
         return
-    
-    # Handle manual destination input
-    if user_state.get("esperando_destino_manual"):
-        state_manager.update_user_state(uid, {
-            "destino": texto,
-            "esperando_destino_manual": False
-        })
-        
-        # Use current OPDS root
-        root = user_state.get("opds_root", config.OPDS_ROOT_START)
-        
-        # Update title based on root
-        if root == config.OPDS_ROOT_EVIL:
-            state_manager.update_user_state(uid, {"titulo": "📁 ZeePubs [ES]"})
-        else:
-            state_manager.update_user_state(uid, {"titulo": "📚 Todas las bibliotecas"})
-        
-        # Show collections immediately
-        await mostrar_colecciones(update, context, root, from_collection=False)
-    
-    # Handle search input
-    elif user_state.get("esperando_busqueda"):
-        state_manager.update_user_state(uid, {"esperando_busqueda": False})
-        search_url = build_search_url(texto, uid)
-        
+
+    # 2) Destino manual
+    if st.get("esperando_destino_manual"):
+        st["esperando_destino_manual"] = False
+        st["destino"] = text
+        await mostrar_colecciones(update, context, st["opds_root"], from_collection=False)
+        return
+
+    # 3) Búsqueda de EPUB
+    if st.get("esperando_busqueda"):
+        st["esperando_busqueda"] = False
+        search_url = build_search_url(text, uid)
         feed = await parse_feed_from_url(search_url)
         if not feed or not getattr(feed, "entries", []):
             keyboard = [
                 [InlineKeyboardButton("🔄 Volver a buscar", callback_data="buscar")],
-                [InlineKeyboardButton("📚 Ir a colecciones", callback_data="volver_colecciones")]
+                [InlineKeyboardButton("📚 Ir a colecciones", callback_data="volver_colecciones")],
             ]
-            await update.message.reply_text(
-                f"🔍 No se encontraron resultados para: {texto}",
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=f"🔍 No se encontraron resultados para: {text}",
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
         else:
             await mostrar_colecciones(update, context, search_url, from_collection=False)
+        return
+
+    # 4) Cualquier otro texto
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text="Usa /start para comenzar o selecciona una opción del menú."
+    )

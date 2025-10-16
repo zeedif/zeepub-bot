@@ -1,66 +1,63 @@
 # services/metadata_service.py
+
 import logging
 import xml.etree.ElementTree as ET
+from typing import Optional, Dict, Any
 from config.config_settings import config
-from utils.http_client import fetch_bytes
+from utils.http_client import fetch_bytes, cleanup_tmp
 from utils.helpers import limpiar_html_basico
-from utils.decorators import cleanup_tmp
 
 logger = logging.getLogger(__name__)
 
-async def obtener_sinopsis_opds(series_id: str):
-    """Get synopsis from OPDS series feed"""
+async def obtener_sinopsis_opds(series_id: str) -> Optional[str]:
+    """Obtiene la sinopsis de una serie desde OPDS."""
     if not series_id:
         return None
-    
     url = f"{config.OPDS_ROOT_EVIL}/series/{series_id}"
     data = await fetch_bytes(url, timeout=10)
     if not data:
         return None
-    
     try:
-        root = ET.fromstring(data if isinstance(data, (bytes, bytearray)) else open(data, "rb").read())
+        content = data if isinstance(data, (bytes, bytearray)) else open(data, "rb").read()
+        root = ET.fromstring(content)
         ns = {"atom": "http://www.w3.org/2005/Atom"}
-        summary_elem = root.find(".//atom:summary", ns)
-        if summary_elem is not None and summary_elem.text:
-            return " ".join(summary_elem.text.split())
+        summary = root.find(".//atom:summary", ns)
+        if summary is not None and summary.text:
+            return " ".join(summary.text.split())
     except Exception as e:
-        logger.error(f"Error obteniendo sinopsis OPDS: {e}")
+        logger.error(f"Error sinopsis OPDS serie {series_id}: {e}")
     finally:
         cleanup_tmp(data)
     return None
 
-async def obtener_sinopsis_opds_volumen(series_id: str, volume_id: str):
-    """Get synopsis for specific volume from OPDS"""
+async def obtener_sinopsis_opds_volumen(series_id: str, volume_id: str) -> Optional[str]:
+    """Obtiene la sinopsis específica de un volumen."""
+    if not series_id or not volume_id:
+        return None
     url = f"{config.OPDS_ROOT_EVIL}/series/{series_id}"
     data = await fetch_bytes(url, timeout=10)
     if not data:
         return None
-    
     try:
-        root = ET.fromstring(data if isinstance(data, (bytes, bytearray)) else open(data, "rb").read())
+        content = data if isinstance(data, (bytes, bytearray)) else open(data, "rb").read()
+        root = ET.fromstring(content)
         ns = {"atom": "http://www.w3.org/2005/Atom"}
-        
         for entry in root.findall("atom:entry", ns):
-            for link in entry.findall("atom:link", ns):
-                href = link.attrib.get("href", "")
-                if f"/volume/{volume_id}/" in href:
-                    summary_elem = entry.find("atom:summary", ns)
-                    if summary_elem is not None and summary_elem.text:
-                        texto = summary_elem.text.strip()
-                        if "Summary:" in texto:
-                            texto = texto.split("Summary:", 1)[1].strip()
-                        return limpiar_html_basico(texto)
+            link = entry.find("atom:link", ns)
+            href = link.attrib.get("href", "")
+            if f"/volume/{volume_id}/" in href:
+                summary = entry.find("atom:summary", ns)
+                if summary is not None and summary.text:
+                    return limpiar_html_basico(summary.text)
     except Exception as e:
-        logger.error(f"Error obteniendo sinopsis volumen: {e}")
+        logger.error(f"Error sinopsis OPDS volumen {volume_id}: {e}")
     finally:
         cleanup_tmp(data)
     return None
 
-async def obtener_metadatos_opds(series_id: str, volume_id: str):
-    """Get metadata from OPDS feed"""
-    url = f"{config.OPDS_ROOT_EVIL}/series/{series_id}"
-    datos = {
+async def obtener_metadatos_opds(series_id: str, volume_id: str) -> Dict[str, Any]:
+    """Extrae metadatos (título, autor, géneros, etc.) desde OPDS."""
+    datos: Dict[str, Any] = {
         "titulo_serie": None,
         "titulo_volumen": None,
         "autor": None,
@@ -68,59 +65,59 @@ async def obtener_metadatos_opds(series_id: str, volume_id: str):
         "generos": [],
         "tags": [],
         "categoria": None,
-        "demografia": None
+        "demografia": None,
     }
-    
+    if not series_id or not volume_id:
+        return datos
+
+    url = f"{config.OPDS_ROOT_EVIL}/series/{series_id}"
     data = await fetch_bytes(url, timeout=10)
     if not data:
         return datos
-    
     try:
-        root = ET.fromstring(data if isinstance(data, (bytes, bytearray)) else open(data, "rb").read())
-        ns = {
-            "atom": "http://www.w3.org/2005/Atom",
-            "dc": "http://purl.org/dc/terms/"
-        }
-        
+        content = data if isinstance(data, (bytes, bytearray)) else open(data, "rb").read()
+        root = ET.fromstring(content)
+        ns = {"atom": "http://www.w3.org/2005/Atom", "dc": "http://purl.org/dc/terms/"}
+
+        # Título de la serie
         feed_title = root.find("atom:title", ns)
         if feed_title is not None and feed_title.text:
-            titulo_serie = feed_title.text.strip()
-            datos["titulo_serie"] = titulo_serie
-            datos["categoria"] = None  # Category should come from OPF or explicit OPDS categories
-        
+            datos["titulo_serie"] = feed_title.text.strip()
+
+        # Entrada del volumen
         for entry in root.findall("atom:entry", ns):
-            for link in entry.findall("atom:link", ns):
-                href = link.attrib.get("href", "")
-                if f"/volume/{volume_id}/" in href:
-                    vol_title = entry.find("atom:title", ns)
-                    if vol_title is not None and vol_title.text:
-                        datos["titulo_volumen"] = vol_title.text.strip()
-                    
-                    author_elem = entry.find("atom:author/atom:name", ns)
-                    if author_elem is not None and author_elem.text:
-                        datos["autor"] = author_elem.text.strip()
-                    
-                    for cat in entry.findall("atom:category", ns):
-                        term = cat.attrib.get("term", "").strip()
-                        scheme = cat.attrib.get("scheme", "").lower()
-                        
-                        if "genre" in scheme:
-                            datos["generos"].append(term)
-                        elif "tag" in scheme:
-                            datos["tags"].append(term)
-                        elif "demographic" in scheme:
-                            datos["demografia"] = term
-                        elif "category" in scheme and not datos["categoria"]:
-                            datos["categoria"] = term
-                    
-                    for creator in entry.findall("dc:creator", ns):
-                        role = creator.attrib.get("role", "").lower()
-                        if "illustrator" in role or "artist" in role:
-                            datos["ilustrador"] = creator.text.strip()
-                    break
+            hrefs = [link.attrib.get("href", "") for link in entry.findall("atom:link", ns)]
+            if any(f"/volume/{volume_id}/" in href for href in hrefs):
+                # Título volumen
+                title_el = entry.find("atom:title", ns)
+                if title_el is not None and title_el.text:
+                    datos["titulo_volumen"] = title_el.text.strip()
+
+                # Autor
+                author_el = entry.find("atom:author/atom:name", ns)
+                if author_el is not None and author_el.text:
+                    datos["autor"] = author_el.text.strip()
+
+                # Categorías y géneros
+                for cat in entry.findall("atom:category", ns):
+                    term = cat.attrib.get("term", "").strip()
+                    scheme = cat.attrib.get("scheme", "").lower()
+                    if "genre" in scheme:
+                        datos["generos"].append(term)
+                    elif "demographic" in scheme:
+                        datos["demografia"] = term
+                    else:
+                        datos["categoria"] = term
+
+                # Ilustrador y tags
+                for creator in entry.findall("dc:creator", ns):
+                    role = creator.attrib.get("role", "").lower()
+                    if "illustrator" in role or "artist" in role:
+                        datos["ilustrador"] = creator.text.strip()
+                break
+
     except Exception as e:
-        logger.error(f"Error obteniendo metadatos OPDS: {e}")
+        logger.error(f"Error metadatos OPDS serie_vol {series_id}/{volume_id}: {e}")
     finally:
         cleanup_tmp(data)
-    
     return datos

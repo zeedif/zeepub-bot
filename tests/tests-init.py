@@ -1,2 +1,4 @@
-# tests/__init__.py
-# Test module for the zeepub bot
+import pytest
+
+def test_placeholder():
+    assert 1 + 1 == 2

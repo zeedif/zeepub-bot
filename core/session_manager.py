@@ -1,45 +1,41 @@
 # core/session_manager.py
-import asyncio
+
 import aiohttp
+import asyncio
 import logging
-from typing import Dict
 
 class SessionManager:
-    """Manages global aiohttp session and user publish locks"""
-    
-    def __init__(self):
-        self._global_session = None
-        self.publish_locks: Dict[int, asyncio.Lock] = {}
-        self.logger = logging.getLogger(__name__)
-    
-    def get_session(self):
-        """Get or create the global aiohttp session"""
-        if self._global_session is None:
-            from config.config_settings import config
-            connector = aiohttp.TCPConnector(limit=20)
-            timeout = aiohttp.ClientTimeout(total=config.DEFAULT_AIOHTTP_TIMEOUT)
-            self._global_session = aiohttp.ClientSession(
-                connector=connector, 
-                timeout=timeout
-            )
-        return self._global_session
-    
-    def get_publish_lock(self, uid: int) -> asyncio.Lock:
-        """Get or create a publish lock for a user"""
-        if uid not in self.publish_locks:
-            self.publish_locks[uid] = asyncio.Lock()
-        return self.publish_locks[uid]
-    
-    async def close(self):
-        """Close the global session"""
-        if self._global_session is not None:
-            try:
-                await self._global_session.close()
-                self.logger.debug("Sesión aiohttp cerrada correctamente")
-            except Exception as e:
-                self.logger.error(f"Error cerrando sesión aiohttp: {e}")
-            finally:
-                self._global_session = None
+    """Gestión única de la sesión HTTP y locks por usuario."""
 
-# Global session manager instance
+    def __init__(self):
+        self._session = None
+        self._locks = {}  # Inicializar diccionario de locks
+        self.logger = logging.getLogger(__name__)
+
+    def get_session(self) -> aiohttp.ClientSession:
+        """Devuelve un único ClientSession, creándolo si es necesario."""
+        if self._session is None:
+            self._session = aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=None)
+            )
+            self.logger.debug("Sesión HTTP creada.")
+        return self._session
+
+    def get_publish_lock(self, uid: int) -> asyncio.Lock:
+        """
+        Obtiene un lock asyncio por usuario (idempotente).
+        Permite serializar descargas/publicaciones por usuario.
+        """
+        if uid not in self._locks:
+            self._locks[uid] = asyncio.Lock()
+        return self._locks[uid]
+
+    def close(self):
+        """Cierra la sesión HTTP si existe."""
+        if self._session:
+            self.logger.debug("Cerrando sesión HTTP.")
+            asyncio.get_event_loop().run_until_complete(self._session.close())
+            self._session = None
+
+# Instancia global
 session_manager = SessionManager()

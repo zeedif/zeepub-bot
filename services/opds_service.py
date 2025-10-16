@@ -1,175 +1,122 @@
-import logging
+# services/opds_service.py
+
 import uuid
+import logging
 from urllib.parse import urlparse, unquote
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-
-from config.config_settings import config
+from telegram.ext import ContextTypes
 from core.state_manager import state_manager
-from utils.helpers import abs_url, norm_string, find_zeepubs_destino
+from config.config_settings import config
 from utils.http_client import parse_feed_from_url
+from utils.helpers import abs_url, find_zeepubs_destino
 
 logger = logging.getLogger(__name__)
 
-async def mostrar_colecciones(update, context, url: str, from_collection: bool = False):
+async def mostrar_colecciones(update, context: ContextTypes.DEFAULT_TYPE, url: str, from_collection: bool = False):
+    """Mostrar colecciones o libros basados en un feed OPDS."""
     uid = update.effective_user.id
-    user_state = state_manager.get_user_state(uid)
-
+    st = state_manager.get_user_state(uid)
     feed = await parse_feed_from_url(url)
     if not feed or not getattr(feed, "entries", []):
         msg = "❌ No se pudo leer el feed o no hay resultados."
-        if getattr(update, "message", None):
+        if hasattr(update, "message") and update.message:
             await update.message.reply_text(msg)
         else:
             await update.callback_query.edit_message_text(msg)
         return
 
-    root_url = user_state.get("opds_root", config.OPDS_ROOT_START)
-
-    state_manager.update_user_state(uid, {"ultima_pagina": url})
-
+    root_url = st.get("opds_root")
+    st["ultima_pagina"] = url
     if from_collection:
-        titulo_actual = user_state.get("titulo", getattr(feed, "feed", {}).get("title", ""))
-        url_actual = user_state.get("url", root_url)
-        user_state["historial"].append((titulo_actual, url_actual))
-
-    user_state.update({
+        st.setdefault("historial", []).append((st.get("titulo", ""), st.get("url", root_url)))
+    st.update({
         "url": url,
         "libros": {},
         "colecciones": {},
         "nav": {"prev": None, "next": None}
     })
 
-    colecciones = []
-    libros = []
-
+    # enlaces de navegación
     for link in getattr(feed.feed, "links", []):
         rel = getattr(link, "rel", "")
         href = abs_url(config.BASE_URL, link.href)
-        if rel == "next":
-            user_state["nav"]["next"] = href
-        elif rel == "previous":
-            user_state["nav"]["prev"] = href
+        if rel == "previous":
+            st["nav"]["prev"] = href
+        elif rel == "next":
+            st["nav"]["next"] = href
+    if not st["nav"]["prev"] and st.get("historial"):
+        st["nav"]["prev"] = st["historial"][-1][1]
 
-    if not user_state["nav"]["prev"] and user_state["historial"]:
-        _, prev_url = user_state["historial"][-1]
-        user_state["nav"]["prev"] = prev_url
-
-    ocultar_titulos = {"En el puente", "Listas de lectura", "Deseo leer", "Todas las colecciones"}
-
+    colecciones, libros = [], []
+    ocultos = {"En el puente", "Listas de lectura", "Deseo leer", "Todas las colecciones"}
     for entry in feed.entries:
-        titulo_entry = getattr(entry, "title", "")
-        autor_entry = getattr(entry, "author", "Desconocido")
+        title = getattr(entry, "title", "")
+        author = getattr(entry, "author", "Desconocido")
         href_entry = getattr(entry, "link", "")
-
-        href_sub = None
-        portada_url = None
-        acquisition_links = []
-
-        for link in getattr(entry, "links", []):
-            rel = getattr(link, "rel", "")
-            href = abs_url(config.BASE_URL, getattr(link, "href", ""))
-
+        href_sub, portada = None, None
+        acqs = []
+        for l in getattr(entry, "links", []):
+            rel = getattr(l, "rel", "")
+            href_l = abs_url(config.BASE_URL, l.href)
             if rel == "subsection":
-                href_sub = href
-            if "acquisition" in rel:
-                acquisition_links.append((href, link))
-            if "image" in rel:
-                portada_url = href
+                href_sub = href_l
+            elif "acquisition" in rel:
+                acqs.append(href_l)
+            elif "image" in rel:
+                portada = href_l
 
-        if href_sub:
-            if titulo_entry.strip() not in ocultar_titulos:
-                colecciones.append({"titulo": titulo_entry, "href": href_sub})
-        elif acquisition_links:
-            for idx_acq, (acq_href, acq_link) in enumerate(acquisition_links):
-                datos_libro = {
-                    "titulo": titulo_entry,
-                    "autor": autor_entry,
+        if href_sub and title not in ocultos:
+            colecciones.append({"titulo": title, "href": href_sub})
+        elif acqs:
+            for download in acqs:
+                libros.append({
+                    "titulo": title,
+                    "autor": author,
                     "href": href_entry,
-                    "descarga": acq_href
-                }
-                if portada_url:
-                    datos_libro["portada"] = portada_url
-                libros.append(datos_libro)
+                    "descarga": download,
+                    "portada": portada
+                })
 
-    keyboard = []
-    keyboard.append([InlineKeyboardButton("🔍 Buscar EPUB", callback_data="buscar")])
-
-    for idx, col in enumerate(colecciones):
-        user_state["colecciones"][idx] = col
-        titulo_normalizado = col["titulo"].strip().lower()
-
-        # NO navegar automáticamente en "Todas las bibliotecas"
-        # Solo agregar botón normal
-        keyboard.append([InlineKeyboardButton(col["titulo"], callback_data=f"col|{idx}")])
-
-    if libros:
-        for libro in libros:
+    # construir teclado
+    keyboard = [[InlineKeyboardButton("🔍 Buscar EPUB", callback_data="buscar")]]
+    if colecciones:
+        for i, col in enumerate(colecciones):
+            st["colecciones"][i] = col
+            keyboard.append([InlineKeyboardButton(col["titulo"], callback_data=f"col|{i}")])
+    else:
+        for b in libros:
             key = uuid.uuid4().hex[:8]
-            user_state["libros"][key] = libro
-            nombre_archivo = unquote(urlparse(libro.get("descarga", "")).path.split("/")[-1])
-            volumen = nombre_archivo.replace(".epub", "").strip()
-            keyboard.append([InlineKeyboardButton(volumen, callback_data=f"lib|{key}")])
+            st["libros"][key] = b
+            name = unquote(urlparse(b["descarga"]).path.split("/")[-1]).replace(".epub", "")
+            keyboard.append([InlineKeyboardButton(name, callback_data=f"lib|{key}")])
 
     nav_buttons = []
-    if user_state["nav"]["prev"]:
-        nav_buttons.append(InlineKeyboardButton("Pág. Anterior", callback_data="nav|prev"))
-    if user_state["nav"]["next"]:
-        nav_buttons.append(InlineKeyboardButton("Pág. Siguiente", callback_data="nav|next"))
+    if st["nav"]["prev"]:
+        nav_buttons.append(InlineKeyboardButton("⬅️ Anterior", callback_data="nav|prev"))
+    if st["nav"]["next"]:
+        nav_buttons.append(InlineKeyboardButton("➡️ Siguiente", callback_data="nav|next"))
     if nav_buttons:
         keyboard.append(nav_buttons)
 
-    titulo_mostrar = user_state.get("titulo", getattr(feed.feed, "title", ""))
+    # Título y markup
+    title = st.get("titulo") or "📚 Categorías"
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    if getattr(update, "message", None):
-        await update.message.reply_text(titulo_mostrar, reply_markup=reply_markup)
+    # Enviar o editar mensaje
+    if hasattr(update, "message") and update.message:
+        await update.message.reply_text(title, reply_markup=reply_markup)
     else:
-        current_message_text = update.callback_query.message.text or ""
-        current_reply_markup = update.callback_query.message.reply_markup
-
-        markup_unchanged = current_reply_markup == reply_markup
-        text_unchanged = current_message_text == titulo_mostrar
-
-        if text_unchanged and markup_unchanged:
-            await update.callback_query.answer()
-        else:
-            await update.callback_query.edit_message_text(titulo_mostrar, reply_markup=reply_markup)
+        await update.callback_query.edit_message_text(title, reply_markup=reply_markup)
 
 async def buscar_zeepubs_directo(update, context, uid: int):
-    user_state = state_manager.get_user_state(uid)
-    root_url = user_state.get("opds_root", config.OPDS_ROOT_START)
-
-    logger.debug(f"buscar_zeepubs_directo: uid={uid} root_url={root_url}")
-
-    feed = await parse_feed_from_url(root_url)
-    if not feed:
-        logger.debug(f"buscar_zeepubs_directo: no se pudo parsear feed desde {root_url}")
-        await mostrar_colecciones(update, context, root_url, from_collection=False)
-        return
-
-    feed_title = getattr(feed, "feed", {}).get("title", None)
-    logger.debug(f"buscar_zeepubs_directo: feed.title={feed_title!r}, entries={len(getattr(feed, 'entries', []))}")
-
-    destino_href = find_zeepubs_destino(feed)
-
-    if not destino_href and root_url != config.OPDS_ROOT_START:
-        logger.debug(f"buscar_zeepubs_directo: reintentando con OPDS_ROOT_START {config.OPDS_ROOT_START}")
-        feed_root_prim = await parse_feed_from_url(config.OPDS_ROOT_START)
-        if feed_root_prim:
-            logger.debug(f"buscar_zeepubs_directo: root principal feed.title={getattr(feed_root_prim, 'feed', {}).get('title', None)!r} entries={len(getattr(feed_root_prim, 'entries', []))}")
-            destino_href = find_zeepubs_destino(feed_root_prim)
-
-    if destino_href:
-        logger.debug(f"buscar_zeepubs_directo: destino encontrado {destino_href}")
-        state_manager.update_user_state(uid, {
-            "titulo": "📁 ZeePubs [ES]",
-            "historial": [],
-            "libros": {},
-            "colecciones": {},
-            "nav": {"prev": None, "next": None}
-        })
-        await mostrar_colecciones(update, context, destino_href, from_collection=True)
-        return
-
-    logger.debug(f"buscar_zeepubs_directo: no se encontró ZeePubs, mostrando root {root_url}")
-    await mostrar_colecciones(update, context, root_url, from_collection=False)
+    """Acceso directo a ZeePubs [ES] detectándolo en el feed."""
+    st = state_manager.get_user_state(uid)
+    url = st.get("opds_root")
+    logger.debug("Intentando acceso directo a ZeePubs desde %s", url)
+    feed = await parse_feed_from_url(url)
+    destino = find_zeepubs_destino(feed, prefer_libraries=True)
+    if destino:
+        st.update({"titulo": "📁 ZeePubs [ES]", "historial": []})
+        await mostrar_colecciones(update, context, destino, from_collection=True)
+    else:
+        await mostrar_colecciones(update, context, url, from_collection=False)

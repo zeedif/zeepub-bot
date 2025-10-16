@@ -1,32 +1,24 @@
-# main.py
-import asyncio, logging
-import nest_asyncio
-
-from bot.app import build_app
-from bot.config import settings
-from bot.http import http_client
-
-nest_asyncio.apply()
+#!/usr/bin/env python3
+import logging
+from config.config_settings import config
+from core.bot import ZeePubBot
 
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    level=getattr(logging, settings.LOG_LEVEL.upper(), logging.INFO)
+    level=getattr(logging, config.LOG_LEVEL.upper(), logging.INFO),
 )
 logger = logging.getLogger(__name__)
 
-async def main():
-    logger.info("Iniciando HTTP client...")
-    await http_client.startup()
-    app = build_app()
-    logger.info("Bot iniciado, entrando en polling...")
-    try:
-        await app.run_polling(stop_signals=None)
-    finally:
-        logger.info("Cerrando HTTP client...")
-        await http_client.shutdown()
+def main():
+    logger.info("Iniciando ZeePub Bot...")
+    is_valid, missing = config.validate()
+    if not is_valid:
+        logger.error(f"Faltan variables de entorno: {', '.join(missing)}")
+        return
+
+    bot = ZeePubBot()
+    bot.start()
+    logger.info("Bot detenido.")
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except (KeyboardInterrupt, SystemExit):
-        logger.info("Detenido por señal del sistema")
+    main()

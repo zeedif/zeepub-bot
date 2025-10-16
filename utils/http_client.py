@@ -1,72 +1,91 @@
+# utils/http_client.py
+
 import os
-import tempfile
 import asyncio
-import httpx
+import aiohttp
 import feedparser
+import tempfile
+from typing import Union
+from core.session_manager import session_manager
 import logging
-from config.config_settings import config
 
 logger = logging.getLogger(__name__)
 
-# Cliente httpx global con keep-alive y pool persistente
-HTTP_CLIENT = httpx.AsyncClient(
-    timeout=httpx.Timeout(connect=10, read=180, write=180, pool=30)
-)
+MAX_IN_MEMORY_BYTES = 10 * 1024 * 1024  # 10MB
 
-async def fetch_bytes(url: str, timeout: int = 60):
+def cleanup_tmp(path):
+    """Elimina archivo temporal si existe."""
+    if isinstance(path, str) and os.path.exists(path):
+        try:
+            os.unlink(path)
+        except Exception:
+            pass
+
+async def fetch_bytes(url: str, session: aiohttp.ClientSession = None, timeout: int = 15) -> Union[bytes, str, None]:
     """
-    Descarga y retorna:
-     - bytes si contenido pequeño (<= MAX_IN_MEMORY_BYTES)
-     - path de archivo temporal (str) si es grande
-    Devuelve None en error.
+    Descarga el contenido de `url`. Si supera MAX_IN_MEMORY_BYTES escribe a fichero temporal.
+    Retorna bytes o ruta al fichero temporal, o None en error.
     """
     try:
-        resp = await HTTP_CLIENT.get(url, timeout=timeout)
-        resp.raise_for_status()
-        cl = resp.headers.get("Content-Length")
-        total = int(cl) if cl and cl.isdigit() else None
-
-        if total is not None and total > config.MAX_IN_MEMORY_BYTES:
-            tmp = tempfile.NamedTemporaryFile(delete=False)
-            try:
-                for chunk in resp.iter_bytes(64 * 1024):
-                    tmp.write(chunk)
-                tmp.close()
-                return tmp.name
-            except Exception as e:
-                logger.warning(f"Error guardando archivo grande: {e}")
+        sess = session or session_manager.get_session()
+        logger.debug("Iniciando descarga de URL OPDS: %s", url)
+        async with sess.get(url, timeout=timeout) as resp:
+            resp.raise_for_status()
+            cl = resp.headers.get("Content-Length")
+            total = None
+            if cl:
                 try:
-                    os.unlink(tmp.name)
-                except Exception:
-                    pass
-                return None
-        else:
-            data = resp.content
-            if len(data) > config.MAX_IN_MEMORY_BYTES:
+                    total = int(cl)
+                except ValueError:
+                    total = None
+            # Si sabemos el tamaño y es grande, stream a archivo
+            if total is not None and total > MAX_IN_MEMORY_BYTES:
                 tmp = tempfile.NamedTemporaryFile(delete=False)
                 try:
-                    tmp.write(data)
+                    async for chunk in resp.content.iter_chunked(64 * 1024):
+                        tmp.write(chunk)
                     tmp.close()
+                    logger.debug("fetch_bytes devolvió archivo temporal: %s (%d bytes)", tmp.name, total)
                     return tmp.name
-                except Exception:
+                except Exception as e:
+                    logger.error("Error al escribir chunks en tmpfile %s: %s", tmp.name, e)
                     try:
                         os.unlink(tmp.name)
                     except Exception:
                         pass
                     return None
+            # Si es pequeño (o tamaño desconocido), leer todo en memoria
+            data = await resp.read()
+            length = len(data)
+            if length > MAX_IN_MEMORY_BYTES:
+                tmp = tempfile.NamedTemporaryFile(delete=False)
+                try:
+                    tmp.write(data)
+                    tmp.close()
+                    logger.debug("fetch_bytes devolvió archivo temporal por tamaño real: %s (%d bytes)", tmp.name, length)
+                    return tmp.name
+                except Exception as e:
+                    logger.error("Error al escribir data en tmpfile %s: %s", tmp.name, e)
+                    try:
+                        os.unlink(tmp.name)
+                    except Exception:
+                        pass
+                    return None
+            logger.debug("fetch_bytes devolvió bytes en memoria (%d bytes)", length)
             return data
     except Exception as e:
-        logger.warning(f"Error fetch_bytes {url}: {e}")
+        logger.debug("Error fetch_bytes %s: %s", url, e)
         return None
 
 async def parse_feed_from_url(url: str):
     """
-    Descarga (fetch_bytes) y parsea OPDS con feedparser.
+    Descarga y parsea un feed OPDS con feedparser.
+    Retorna objeto feedparser.FeedParserDict o None en error.
     """
     data = await fetch_bytes(url, timeout=20)
     if not data:
+        logger.error("parse_feed_from_url: fetch_bytes devolvió None para %s", url)
         return None
-
     try:
         if isinstance(data, (bytes, bytearray)):
             feed = await asyncio.to_thread(feedparser.parse, data)
@@ -74,44 +93,15 @@ async def parse_feed_from_url(url: str):
             try:
                 with open(data, "rb") as f:
                     content = f.read()
-            except Exception:
+            except Exception as e:
+                logger.error("parse_feed_from_url: error leyendo tmpfile %s: %s", data, e)
                 return None
             feed = await asyncio.to_thread(feedparser.parse, content)
         else:
             feed = await asyncio.to_thread(feedparser.parse, data)
-        return None if getattr(feed, "bozo", False) else feed
+        if getattr(feed, "bozo", False):
+            logger.error("parse_feed_from_url: bozo flag true para %s", url)
+            return None
+        return feed
     finally:
-        # Limpieza segura de tempfiles
-        from utils.decorators import cleanup_tmp
         cleanup_tmp(data)
-
-class AsyncLRUCache:
-    def __init__(self, maxsize=64):
-        self.cache = dict()
-        self.queue = []
-        self.maxsize = maxsize
-        self.lock = asyncio.Lock()
-
-    async def get(self, key, getter):
-        async with self.lock:
-            if key in self.cache:
-                self.queue.remove(key)
-                self.queue.append(key)
-                return self.cache[key]
-
-            value = await getter()
-            self.cache[key] = value
-            self.queue.append(key)
-
-            if len(self.queue) > self.maxsize:
-                remove_key = self.queue.pop(0)
-                del self.cache[remove_key]
-
-            return value
-
-async_cache = AsyncLRUCache(maxsize=128)
-
-async def fetch_bytes_cached(url: str):
-    async def getter():
-        return await fetch_bytes(url)
-    return await async_cache.get(url, getter)

@@ -1,54 +1,63 @@
+# core/bot.py
+
 import logging
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, filters
-from config.settings import config
-from core.state_manager import StateManager
-from core.session_manager import SessionManager
-from utils.rate_limiter import create_rate_limit_manager_from_config
-from utils.rate_limiter import RateLimitType
+from telegram.ext import (
+    ApplicationBuilder, CommandHandler, CallbackQueryHandler,
+    MessageHandler, filters
+)
+from telegram.error import TimedOut
+from config.config_settings import config
+from core.session_manager import session_manager
 from handlers.command_handlers import CommandHandlers
-from handlers.callback_handlers import CallbackHandlers
-from handlers.message_handlers import MessageHandlers
+from handlers.callback_handlers import (
+    set_destino, buscar_epub, abrir_zeepubs, button_handler
+)
+from handlers.message_handlers import recibir_texto
 from plugins.plugin_manager import PluginManager
 
+logger = logging.getLogger(__name__)
+
+async def error_handler(update, context):
+    """Manejo global de errores para evitar caídas por timeouts u otros."""
+    err = context.error
+    if isinstance(err, TimedOut):
+        logger.warning("Timeout al procesar update %s: %s", update, err)
+        return
+    logger.exception("Error en update %s: %s", update, err)
+    return
 
 class ZeePubBot:
+    """Clase principal del bot."""
+
     def __init__(self):
-        self.token = config.TELEGRAM_TOKEN
-        self.state_manager = StateManager()
-        self.session_manager = SessionManager()
+        token = config.TELEGRAM_TOKEN
+        self.app = ApplicationBuilder().token(token).build()
+        self.app.add_error_handler(error_handler)
 
-        # Usar función helper para crear rate_manager correctamente
-        self.rate_manager = create_rate_limit_manager_from_config(config)
-
+        # Inicializar plugins sincrónicamente
         self.plugin_manager = PluginManager()
+        self.plugin_manager.initialize(self.app)
 
-        self.application = ApplicationBuilder().token(self.token).build()
+        # Comandos
+        self.command_handlers = CommandHandlers(self.app)
+        self.app.add_handler(CommandHandler("start", self.command_handlers.start))
+        self.app.add_handler(CommandHandler("help", self.command_handlers.help))
+        self.app.add_handler(CommandHandler("status", self.command_handlers.status))
+        self.app.add_handler(CommandHandler("cancel", self.command_handlers.cancel))
+        self.app.add_handler(CommandHandler("plugins", self.command_handlers.plugins))
+        self.app.add_handler(CommandHandler("evil", self.command_handlers.evil))
 
-        # Initialize handler instances
-        self.command_handlers = CommandHandlers(self)
-        self.callback_handlers = CallbackHandlers(self)
-        self.message_handlers = MessageHandlers(self)
+        # Callbacks
+        self.app.add_handler(CallbackQueryHandler(set_destino, pattern="^destino"))
+        self.app.add_handler(CallbackQueryHandler(buscar_epub, pattern="^buscar"))
+        self.app.add_handler(CallbackQueryHandler(abrir_zeepubs, pattern="^abrir"))
+        self.app.add_handler(CallbackQueryHandler(button_handler))
 
-    async def start(self):
-        # Load plugins
-        await self.plugin_manager.initialize(self)
+        # Mensajes de texto
+        self.app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_texto))
 
-        # Register command handlers
-        self.application.add_handler(CommandHandler("start", self.command_handlers.start_command))
-        self.application.add_handler(CommandHandler("help", self.command_handlers.help_command))
-        self.application.add_handler(CommandHandler("cancel", self.command_handlers.cancel_command))
-        self.application.add_handler(CommandHandler("status", self.command_handlers.status_command))
-        self.application.add_handler(CommandHandler("plugins", self.command_handlers.plugins_command))
-
-        # Register callback handlers
-        self.application.add_handler(CallbackQueryHandler(self.callback_handlers.set_destino, pattern="^set_destino"))
-        self.application.add_handler(CallbackQueryHandler(self.callback_handlers.buscar_epub, pattern="^buscar_epub"))
-        self.application.add_handler(CallbackQueryHandler(self.callback_handlers.abrir_zeepubs, pattern="^abrir_zeepubs"))
-        self.application.add_handler(CallbackQueryHandler(self.callback_handlers.button_handler))
-
-        # Register message handler
-        self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.message_handlers.recibir_texto))
-
-        # Run the bot
-        logging.info("Starting the Telegram bot application.")
-        await self.application.run_polling()
+    def start(self):
+        """Arranca el bot en polling."""
+        logger.info("Bot iniciado, entrando en polling...")
+        self.app.run_polling()
+        session_manager.close()

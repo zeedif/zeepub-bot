@@ -1,132 +1,185 @@
+# handlers/command_handlers.py
+
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes
-import time
-from config.config_settings import config
+from telegram.ext import ContextTypes, CommandHandler
 from core.state_manager import state_manager
+from utils.download_limiter import downloads_left, record_download, can_download
 from services.opds_service import mostrar_colecciones
-from utils.download_limiter import downloads_left, DOWNLOAD_WHITELIST
+from config.config_settings import config
 
 logger = logging.getLogger(__name__)
 
-MAX_DOWNLOADS_PER_HOUR = getattr(config, "MAX_DOWNLOADS_PER_HOUR", 5)
-DOWNLOAD_TIME_WINDOW = 3600  # segundos en una hora
+class CommandHandlers:
+    def __init__(self, app):
+        self.app = app
+        # Registrar handler para /search
+        app.add_handler(CommandHandler("search", self.search))
 
-user_download_limits = {}
+    async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /start: inicializa estado; admin->evil, otros->normal."""
+        uid = update.effective_user.id
+        left = downloads_left(uid)
+        text = "✅ Descargas ilimitadas" if left == "ilimitadas" else f"⚡️ Te quedan {left} descargas"
+        await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
 
+        st = state_manager.get_user_state(uid)
+        st["destino"] = update.effective_chat.id
+        st["chat_origen"] = update.effective_chat.id
 
-def downloads_left(user_id):
-    if user_id in DOWNLOAD_WHITELIST:
-        return "ilimitadas"
-    now = time.time()
-    timestamps = user_download_limits.get(user_id, [])
-    timestamps = [t for t in timestamps if now - t < DOWNLOAD_TIME_WINDOW]
-    return MAX_DOWNLOADS_PER_HOUR - len(timestamps)
-
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /start command"""
-    uid = update.effective_user.id
-    root_url = config.OPDS_ROOT_START
-
-    # Mostrar descargas restantes
-    left = downloads_left(uid)
-    if left == "ilimitadas":
-        texto = "Tienes descargas ilimitadas."
-    else:
-        texto = f"⚡️ Te quedan {left} descargas de EPUB en esta hora."
-    await update.message.reply_text(texto)
-
-    # Initialize user state for public root
-    state_manager.update_user_state(uid, {
-        "titulo": "📚 Todas las bibliotecas",
-        "destino": update.effective_chat.id,
-        "chat_origen": update.effective_chat.id,
-        "ultima_pagina": root_url,
-        "opds_root": root_url,
-        "opds_root_base": root_url,
-        "auto_enter_done": False
-    })
-
-    # Show root menu (no auto-enter)
-    await mostrar_colecciones(update, context, root_url, from_collection=False)
-
-
-async def evil(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /evil command - requires password"""
-    uid = update.effective_user.id
-    root_url = config.OPDS_ROOT_EVIL
-
-    state_manager.update_user_state(uid, {
-        "titulo": "📚 Todas las bibliotecas",
-        "destino": None,
-        "chat_origen": update.effective_chat.id,
-        "esperando_password": True,
-        "ultima_pagina": root_url,
-        "opds_root": root_url,
-        "opds_root_base": root_url
-    })
-
-    await update.message.reply_text("🔒 Ingresa la contraseña para acceder a este modo:")
-
-
-async def volver(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /volver command"""
-    uid = update.effective_user.id
-    user_state = state_manager.get_user_state(uid)
-
-    if user_state.get("historial"):
-        titulo_prev, url_prev = user_state["historial"].pop()
-        state_manager.update_user_state(uid, {"titulo": titulo_prev})
-        await mostrar_colecciones(update, context, url_prev, from_collection=False)
-    else:
-        await update.message.reply_text("No hay nivel anterior disponible.")
-
-
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /cancel command"""
-    uid = update.effective_user.id
-    user_state = state_manager.get_user_state(uid)
-
-    # Try to delete last menu message
-    msg_id = user_state.pop("msg_que_hacer", None)
-    chat_id = None
-
-    try:
-        chat_id = update.effective_chat.id
-    except Exception:
-        chat_id = None
-
-    if msg_id and chat_id:
-        try:
-            await context.bot.delete_message(chat_id=chat_id, message_id=msg_id)
-        except Exception:
-            logger.debug(f"cancel: no se pudo borrar msg_que_hacer (chat={chat_id} msg={msg_id})")
-
-    # Clean up menu_prep if exists
-    menu_prep = user_state.pop("menu_prep", None)
-    if menu_prep and isinstance(menu_prep, tuple):
-        try:
-            _chat, _msg = menu_prep
-            if _chat and _msg:
-                await context.bot.delete_message(chat_id=_chat, message_id=_msg)
-        except Exception:
-            logger.debug(f"cancel: no se pudo borrar menu_prep {menu_prep!r}")
-
-    # Reset user state
-    state_manager.reset_user_state(uid)
-
-    # Send confirmation
-    try:
-        if chat_id:
+        # Administradores: mostrar selección de destino Evil directamente
+        if uid in config.ADMIN_USERS:
+            # Administradores entran directamente en el menú Evil (sin contraseña)
+            if uid in config.ADMIN_USERS:
+                root = config.OPDS_ROOT_EVIL
+                st["opds_root"] = root
+                st["opds_root_base"] = root
+                st["historial"] = []
+                st["ultima_pagina"] = root
+#           await context.bot.send_message(
+#               chat_id=update.effective_chat.id,
+#               text="✅ Elige destino:"
+#           )
+            # Mostrar opciones de destino
+            keyboard = [
+                [InlineKeyboardButton("📍 Aquí", callback_data="destino|aqui")],
+                [InlineKeyboardButton("📣 BotTest", callback_data="destino|@ZeePubBotTest")],
+                [InlineKeyboardButton("📣 ZeePubs", callback_data="destino|@ZeePubs")],
+                [InlineKeyboardButton("✏️ Otro", callback_data="destino|otro")]
+            ]
             await context.bot.send_message(
-                chat_id=chat_id,
-                text="✅ Operación cancelada. El bot está listo. Usa /start para comenzar."
+                chat_id=update.effective_chat.id,
+                text="🔧 Modo Evil: selecciona destino de publicación",
+                reply_markup=InlineKeyboardMarkup(keyboard)
             )
+            return
+
+        # Usuarios normales
+        root = config.OPDS_ROOT_START
+        st["opds_root"] = root
+        st["opds_root_base"] = root
+        st["historial"] = []
+        st["ultima_pagina"] = root
+        await mostrar_colecciones(update, context, root, from_collection=False)
+
+    async def help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /help: muestra ayuda básica."""
+        text = (
+            "🤖 *ZeePub Bot - Ayuda*\n\n"
+            "/start - Iniciar y mostrar menú\n"
+#           "/search - Buscar EPUB por título\n"
+            "/help - Mostrar esta ayuda\n"
+            "/status - Ver estado del bot y estado de usuario\n"
+            "/cancel - Cancelar acción actual\n"
+#           "/plugins - Mostrar plugins cargados\n"
+#           "/evil - Modo privado (requiere contraseña)\n"
+        )
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=text,
+            parse_mode="Markdown"
+        )
+
+    async def status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /status: informa estado interno, nivel de usuario y descargas restantes."""
+        uid = update.effective_user.id
+        st = state_manager.get_user_state(uid)
+        from config.config_settings import config
+
+        # Determinar nivel de usuario y máximo de descargas
+        if uid in config.PREMIUM_LIST:
+            user_level = "Premium"
+            max_dl = None  # ilimitadas
+        elif uid in config.VIP_LIST:
+            user_level = "VIP"
+            max_dl = config.VIP_DOWNLOADS_PER_DAY
+        elif uid in config.WHITELIST:
+            user_level = "Patrocinador"
+            max_dl = config.WHITELIST_DOWNLOADS_PER_DAY
         else:
-            if getattr(update, "message", None):
-                await update.message.reply_text(
-                    "✅ Operación cancelada. El bot está listo. Usa /start para comenzar."
-                )
-    except Exception:
-        logger.debug("cancel: no se pudo enviar mensaje de confirmación")
+            user_level = "Lector"
+            max_dl = config.MAX_DOWNLOADS_PER_DAY
+
+        # Descargas usadas y restantes
+        used = st.get("downloads_used", 0)
+        if max_dl is None:
+            left_text = "✅ Descargas ilimitadas"
+        else:
+            remaining = max_dl - used
+            left_text = f"⚡️ Te quedan {remaining if remaining>0 else 0} descargas por día (de {max_dl})"
+
+        text = (
+            "📊 *Estado del Bot y de Usuario*\n\n"
+            f"*Usuario:* {update.effective_user.first_name}\n"
+            f"*ID:* {uid}\n"
+            f"*Nivel:* {user_level}\n"
+            f"*Descargas restantes:* {left_text}\n"
+#           f"*Root OPDS:* {st.get('opds_root')}\n"
+#           f"*Última página:* {st.get('ultima_pagina')}\n"
+        )
+
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=text,
+            parse_mode="Markdown"
+        )
+
+    async def cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /cancel: limpia estado y confirma cancelación."""
+        uid = update.effective_user.id
+        st = state_manager.get_user_state(uid)
+        st.clear()
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="✅ Operación cancelada."
+        )
+
+    async def plugins(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /plugins: lista plugins activos."""
+        pm = getattr(self.app, "plugin_manager", None)
+        if not pm:
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="❌ Sistema de plugins no disponible."
+            )
+            return
+        plugins = pm.list_plugins()
+        if not plugins:
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="📦 No hay plugins activos."
+            )
+            return
+        text = "🔌 *Plugins activos:*\n\n"
+        for name, info in plugins.items():
+            text += f"• *{name}* v{info['version']} — _{info['description']}_\n"
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=text,
+            parse_mode="Markdown"
+        )
+
+    async def evil(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /evil: inicia modo privado solicitando contraseña."""
+        uid = update.effective_user.id
+        st = state_manager.get_user_state(uid)
+        st["opds_root"] = config.OPDS_ROOT_EVIL
+        st["historial"] = []
+        st["esperando_password"] = True
+        message = await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="🔒 Ingresa contraseña de 6 horas:"
+        )
+        st["msg_esperando_pwd"] = message.message_id
+
+    async def search(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /search: pide al usuario un término para buscar EPUB."""
+        uid = update.effective_user.id
+        st = state_manager.get_user_state(uid)
+        # Marcar estado para recibir el término de búsqueda
+        st["esperando_busqueda"] = True
+        # Pedir término de búsqueda
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="🔍 Ingresa el título o palabra clave para buscar EPUB:"
+        )
