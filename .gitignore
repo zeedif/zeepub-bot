@@ -1,22 +1,33 @@
-# Ignore everything by default
+# Ignorar todo por defecto
 *
 
-# Allow directory traversal so we can un-ignore specific files
-!*/
-
-# Don’t ignore the gitignore itself
+# Exceptuar este archivo .gitignore
 !.gitignore
 
-# Legacy main script (if you still have it)
-!zeepub_bot.py
+# Virtualenvs
+venv/
+.env
 
-# New top-level files
+# Archivos compilados de Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Logs
+*.log
+
+# Backups y temporales
+*.bak
+*.tmp
+
+# IDEs
+.vscode/
+.idea/
+
+# Excepciones: incluir solo los ficheros y directorios de código fuente
 !main.py
-!project-init.py
-!__init__.py
 !README.md
 
-# New packages and their .py files
 !bot/
 !bot/*.py
 
@@ -43,22 +54,3 @@
 
 !utils/
 !utils/*.py
-
-# Python cache
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-
-# Logs
-*.log
-
-# Editor config
-.vscode/
-.idea/
-
-# Backups
-*.bak
-
-# Environment
-.env
