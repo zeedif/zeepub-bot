@@ -1,0 +1,26 @@
+# Telegram Bot Framework
+python-telegram-bot==21.3
+
+# HTTP client y soporte async
+aiohttp==3.9.5
+
+# OPDS & feeds
+feedparser==6.0.11
+lxml==5.2.2
+
+# Configuración
+python-dotenv==1.0.1
+
+# Typing para compatibilidad
+typing-extensions==4.12.2
+
+# Utilidades
+nest-asyncio==1.5.8
+rich==13.7.1
+psutil==6.0.0
+
+# Desarrollo y pruebas
+pytest==8.2.2
+pytest-asyncio==0.23.7
+black==24.4.2
+flake8==7.0.0
