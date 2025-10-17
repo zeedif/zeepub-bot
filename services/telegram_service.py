@@ -99,6 +99,21 @@ async def publicar_libro(update, context: ContextTypes.DEFAULT_TYPE,
         # Descargar EPUB
         epub_downloaded = None
         if epub_url:
+            # Verificar si el usuario aún puede descargar
+            if not can_download(uid):
+                await bot.send_message(
+                    chat_id=destino,
+                    text="🚫 Has alcanzado tu límite de descargas por hoy. Inténtalo más tarde."
+                )
+                # Eliminar mensaje de preparación si existe
+                if menu_prep:
+                    menu_chat, menu_msg_id = menu_prep
+                    try:
+                        await bot.delete_message(chat_id=menu_chat, message_id=menu_msg_id)
+                    except:
+                        pass
+                return  # Salir antes de permitir la descarga
+
             epub_downloaded = await fetch_bytes(epub_url, timeout=120)
             if epub_downloaded:
                 try:
@@ -177,9 +192,22 @@ async def publicar_libro(update, context: ContextTypes.DEFAULT_TYPE,
             if slug:
                 caption += f"\n#{slug}"
             await send_doc_bytes(bot, destino, caption, epub_downloaded, filename=fname)
-            # Registrar descarga para actualizar el contador
-            from utils.download_limiter import record_download
+
+            # Registrar descarga y actualizar contador
+            from utils.download_limiter import record_download, downloads_left
             record_download(uid)
+            restantes = downloads_left(uid)
+
+            # Mostrar cuántas descargas quedan (excepto Premium)
+            if restantes != "ilimitadas":
+                try:
+                    await bot.send_message(
+                        chat_id=destino,
+                        text=f"📥 Te quedan {restantes} descargas disponibles para hoy."
+                    )
+                except Exception as e:
+                    logger.debug(f"Error enviando mensaje de descargas restantes: {e}")
+
             cleanup_tmp(epub_downloaded)
 
         # Eliminar mensaje de preparación
@@ -188,7 +216,7 @@ async def publicar_libro(update, context: ContextTypes.DEFAULT_TYPE,
         except:
             pass
 
-        # Mostrar opciones posteriores
+        # Mostrar opciones posteriores (mantener fuera del bloque de descarga)
         keyboard = [
             [InlineKeyboardButton("📚 Volver a categorías", callback_data="volver_colecciones")],
             [InlineKeyboardButton("↩️ Volver a la página anterior", callback_data="volver_ultima")],
