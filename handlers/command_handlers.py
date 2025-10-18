@@ -13,8 +13,16 @@ logger = logging.getLogger(__name__)
 class CommandHandlers:
     def __init__(self, app):
         self.app = app
-        # Registrar handler para /search
+        # Registrar handlers existentes
         app.add_handler(CommandHandler("search", self.search))
+        app.add_handler(CommandHandler("start", self.start))
+        app.add_handler(CommandHandler("help", self.help))
+        app.add_handler(CommandHandler("status", self.status))
+        app.add_handler(CommandHandler("cancel", self.cancel))
+        app.add_handler(CommandHandler("plugins", self.plugins))
+        app.add_handler(CommandHandler("evil", self.evil))
+        # Registrar /reset
+        app.add_handler(CommandHandler("reset", self.reset_command))
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /start: inicializa estado; admin->evil, otros->normal."""
@@ -183,3 +191,39 @@ class CommandHandlers:
             chat_id=update.effective_chat.id,
             text="🔍 Ingresa el título o palabra clave para buscar EPUB:"
         )
+
+    async def reset_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Resetea el contador de descargas de un usuario (solo admins)."""
+        uid = update.effective_user.id
+
+        # Verificar que sea admin
+        if uid not in config.ADMIN_USERS:
+            await update.message.reply_text("⛔ No tienes permisos para usar este comando.")
+            return
+
+        # Verificar argumentos
+        if not context.args or len(context.args) != 1:
+            await update.message.reply_text(
+                "❌ Uso incorrecto.\n"
+                "Uso: /reset <user_id>\n"
+                "Ejemplo: /reset 123456789"
+            )
+            return
+
+        try:
+            target_uid = int(context.args[0])
+        except ValueError:
+            await update.message.reply_text("❌ El ID debe ser un número válido.")
+            return
+
+        # Resetear descargas
+        user_state = state_manager.get_user_state(target_uid)
+        old_count = user_state.get("downloads_used", 0)
+        user_state["downloads_used"] = 0
+
+        await update.message.reply_text(
+            f"✅ Contador de descargas reseteado para el usuario {target_uid}.\n"
+            f"Descargas usadas anteriormente: {old_count}"
+        )
+
+        logger.info(f"Admin {uid} reseteó descargas de usuario {target_uid} (antes: {old_count})")
