@@ -18,6 +18,7 @@ from services.epub_service import parse_opf_from_epub
 from utils.http_client import fetch_bytes, cleanup_tmp
 from utils.helpers import generar_slug_from_meta, formatear_mensaje_portada, escapar_html
 from utils.download_limiter import record_download, can_download, downloads_left
+from services.epub_service import parse_opf_from_epub, extract_cover_from_epub
 
 logger = logging.getLogger(__name__)
 
@@ -110,20 +111,27 @@ async def publicar_libro(update, context: ContextTypes.DEFAULT_TYPE,
                 user_state["epub_url"] = epub_url
                 user_state["meta_pendiente"] = meta
 
-        # Enviar portada
+        # Dentro de publicar_libro, donde quieras enviar portada:
         mensaje_portada = formatear_mensaje_portada(meta)
-        if portada_url:
-            tmp = await fetch_bytes(portada_url, timeout=15)
-            await send_photo_bytes(bot, destino, mensaje_portada, tmp, filename="portada.jpg", parse_mode="HTML")
-            cleanup_tmp(tmp)
-            if menu_prep:
-                menu_chat, menu_msg_id = menu_prep
-                try:
-                    await bot.delete_message(chat_id=menu_chat, message_id=menu_msg_id)
-                except:
-                    pass
+
+        # Extraer portada embebida
+        cover_bytes = None
+        if epub_downloaded:
+            cover_bytes = extract_cover_from_epub(epub_downloaded)
+
+        # Fallback a URL OPDS
+        if cover_bytes:
+            portada_data = cover_bytes
         else:
-            await bot.send_message(chat_id=destino, text=mensaje_portada, parse_mode="HTML")
+            portada_data = await fetch_bytes(portada_url, timeout=15)
+
+        await send_photo_bytes(
+            bot, destino, mensaje_portada,
+            portada_data, filename="cover.jpg", parse_mode="HTML"
+        )
+
+        if not cover_bytes:
+            cleanup_tmp(portada_data)
 
         # Sinopsis
         sinopsis = meta.get("sinopsis")

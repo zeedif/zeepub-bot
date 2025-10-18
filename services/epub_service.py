@@ -1,6 +1,7 @@
 # services/epub_service.py
 
 import io
+import os
 import zipfile
 import xml.etree.ElementTree as ET
 from typing import Optional, Dict, Any
@@ -181,5 +182,71 @@ async def parse_opf_from_epub(data_or_path) -> Optional[Dict[str, Any]]:
         if not opf_data:
             return None
         return _parse_opf(opf_data)
+    except Exception:
+        return None
+
+def extract_cover_from_epub(data: bytes) -> Optional[bytes]:
+    """
+    Extrae y devuelve los bytes de la portada embebida en el EPUB,
+    buscando primero <meta property="cover"> y luego cualquier
+    image/* con 'cover' en id o href. Retorna None si no la halla.
+    """
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(data))
+        namelist = zf.namelist()
+        lower_map = {n.lower(): n for n in namelist}
+
+        # 1) localizar OPF
+        try:
+            container = zf.read("META-INF/container.xml")
+            tree = ET.fromstring(container)
+            opf_path = next(
+                rf.attrib["full-path"]
+                for rf in tree.findall(
+                    ".//{urn:oasis:names:tc:opendocument:xmlns:container}rootfile"
+                )
+                if rf.attrib.get("full-path","").lower().endswith(".opf")
+            )
+        except StopIteration:
+            opf_path = next(name for name in namelist if name.lower().endswith(".opf"))
+        real_opf = lower_map.get(opf_path.lower(), opf_path)
+
+        # 2) leer OPF
+        opf_data = zf.read(real_opf)
+        root = ET.fromstring(opf_data)
+        ns = {"opf":"http://www.idpf.org/2007/opf"}
+
+        # 3) meta cover id
+        cover_id = None
+        for m in root.findall(".//opf:meta", ns):
+            if m.attrib.get("property","").lower()=="cover":
+                cover_id = m.attrib.get("content")
+                break
+
+        # 4) manifest lookup
+        manifest = root.findall(".//opf:item", ns)
+        target_href = None
+        if cover_id:
+            for item in manifest:
+                if item.attrib.get("id")==cover_id:
+                    target_href = item.attrib.get("href")
+                    break
+        if not target_href:
+            for item in manifest:
+                href = item.attrib.get("href","").lower()
+                iid = item.attrib.get("id","").lower()
+                mt = item.attrib.get("media-type","")
+                if mt.startswith("image/") and "cover" in (iid+href):
+                    target_href = item.attrib.get("href")
+                    break
+
+        if not target_href:
+            return None
+
+        # 5) leer bytes portada
+        base = os.path.dirname(real_opf)
+        full = f"{base}/{target_href}".lstrip("/")
+        real_cover = lower_map.get(full.lower(), full)
+        return zf.read(real_cover)
     except Exception:
         return None
