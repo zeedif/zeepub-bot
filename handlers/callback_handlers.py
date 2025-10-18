@@ -172,6 +172,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("👋 Gracias por usar el bot.")
         return
 
+    # Descargar EPUB pendiente
+    if data == "descargar_epub":
+        await query.answer()
+        from services.telegram_service import descargar_epub_pendiente
+        await descargar_epub_pendiente(update, context, uid)
+        return
+
 def register_handlers(app):
     # CallbackQuery handlers
     app.add_handler(CallbackQueryHandler(set_destino, pattern="^destino\\|"))
