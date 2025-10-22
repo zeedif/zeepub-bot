@@ -133,12 +133,36 @@ class CommandHandlers:
         )
 
     async def cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /cancel: limpia estado y confirma cancelación."""
+        """Handle /cancel: limpia estado, borra menús y confirma cancelación."""
         uid = update.effective_user.id
         st = state_manager.get_user_state(uid)
-        st.clear()
+        
+        # Limpiar estado
+        st.pop("esperando_busqueda", None)
+        st.pop("esperando_destino_manual", None)
+        st.pop("series_id", None)
+        st.pop("volume_id", None)
+        
+        chat_id = update.effective_chat.id
+        msg_id = update.message.message_id
+        
+        # Borrar el último mensaje anterior (el menú)
+        try:
+            await context.bot.delete_message(
+                chat_id=chat_id,
+                message_id=msg_id - 1
+            )
+        except Exception:
+            logger.debug("No se pudo borrar mensaje anterior")
+        
+        # Borrar el mensaje de /cancel
+        try:
+            await update.message.delete()
+        except Exception:
+            logger.debug("No se pudo borrar comando /cancel")
+        
         await context.bot.send_message(
-            chat_id=update.effective_chat.id,
+            chat_id=chat_id,
             text="✅ Operación cancelada."
         )
 
