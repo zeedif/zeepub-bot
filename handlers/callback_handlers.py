@@ -217,30 +217,34 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await mostrar_colecciones(update, context, root, from_collection=False)
         return
 
-    # Volver a última página usando historial
+    # Volver a última página donde se listaban los EPUB
     if data == "volver_ultima":
-        if "historial" not in st:
-            st["historial"] = []
-            
-        if st["historial"]:
-            # Obtener la última página del historial
-            last_page = st["historial"].pop()
-            if last_page and last_page.get("url"):
-                st["titulo"] = last_page["titulo"]
-                st["url"] = last_page["url"]
-                await mostrar_colecciones(update, context, last_page["url"], from_collection=True)
+        last_url = st.get("ultima_pagina")
+        if last_url:
+            # Opcional: Si también guardas el título anterior, úsalo aquí
+            st["titulo"] = "📚 Última página"
+            st["url"] = last_url
+            await mostrar_colecciones(update, context, last_url, from_collection=True)
+        else:
+            # Si no hay última página guardada, usar historial como antes
+            if "historial" not in st:
+                st["historial"] = []
+            if st["historial"]:
+                last_page = st["historial"].pop()
+                if last_page and last_page.get("url"):
+                    st["titulo"] = last_page["titulo"]
+                    st["url"] = last_page["url"]
+                    await mostrar_colecciones(update, context, last_page["url"], from_collection=True)
+                else:
+                    root = st.get("opds_root_base") or st.get("opds_root")
+                    st["titulo"] = "📚 Categorías"
+                    st["url"] = root
+                    await mostrar_colecciones(update, context, root, from_collection=False)
             else:
-                # Si no hay URL válida, ir a raíz
                 root = st.get("opds_root_base") or st.get("opds_root")
                 st["titulo"] = "📚 Categorías"
                 st["url"] = root
                 await mostrar_colecciones(update, context, root, from_collection=False)
-        else:
-            # No hay historial, ir a raíz
-            root = st.get("opds_root_base") or st.get("opds_root")
-            st["titulo"] = "📚 Categorías"
-            st["url"] = root
-            await mostrar_colecciones(update, context, root, from_collection=False)
         return
 
     # Cerrar menú
