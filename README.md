@@ -115,19 +115,21 @@ python main.py
 
 Puedes ejecutar el bot fácilmente usando Docker y Docker Compose.
 
-1.  **Clonar y configurar**:
-    ```bash
-    git clone https://github.com/devil1210/zeepub-bot.git
-    cd zeepub-bot
-    cp .env.example .env
-    nano .env  # Configura tus variables
-    ```
+### ☁️ Opción 1: Docker Hub (Recomendado)
 
-2.  **Ejecutar**:
-    Esto construirá la imagen localmente en tu máquina.
-    ```bash
-    docker-compose up -d --build
-    ```
+**1. En tu máquina principal (Subir imagen):**
+He incluido un script para automatizar esto. Solo necesitas ejecutar:
+```bash
+./publish.sh
+```
+*(Asegúrate de haber hecho `docker login` al menos una vez antes).*
+
+**2. En la otra máquina (Descargar y ejecutar):**
+Solo necesitas copiar el archivo `docker-compose.yml` y tu archivo `.env`.
+```bash
+# Descarga y arranca el bot
+docker-compose up -d
+```
 
 3.  **Ver logs**:
     ```bash
@@ -138,6 +140,25 @@ Puedes ejecutar el bot fácilmente usando Docker y Docker Compose.
     ```bash
     docker-compose down
     ```
+
+### 📦 Compartir imagen manualmente (Offline)
+
+Si no quieres construir la imagen en cada máquina, puedes guardarla en un archivo y llevarla a otro servidor:
+
+1.  **Guardar imagen en un archivo**:
+    ```bash
+    docker save -o zeepub_bot.tar zeepub_bot_zeepub-bot
+    ```
+
+2.  **Copiar el archivo** `zeepub_bot.tar` a la otra máquina.
+
+3.  **Cargar imagen**:
+    ```bash
+    docker load -i zeepub_bot.tar
+    ```
+
+4.  **Ejecutar**:
+    Asegúrate de que en `docker-compose.yml` tengas `image: zeepub_bot_zeepub-bot` (o el nombre que tenga la imagen cargada) y comenta la línea `build: .`.
 
 ***
 
