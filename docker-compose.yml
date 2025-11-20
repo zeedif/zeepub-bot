@@ -2,8 +2,8 @@ version: '3.8'
 
 services:
   zeepub-bot:
-    image: ghcr.io/devil1210/zeepub-bot:latest
-    # build: . # Uncomment to build locally
+    # image: ghcr.io/devil1210/zeepub-bot:latest
+    build: . # Build locally
     container_name: zeepub_bot
     restart: always
     env_file:

@@ -115,8 +115,7 @@ python main.py
 
 Puedes ejecutar el bot fácilmente usando Docker y Docker Compose.
 
-1.  **Descargar archivos necesarios**:
-    Solo necesitas el `docker-compose.yml` y el `.env`. Puedes clonar el repo o bajarlos manualmente.
+1.  **Clonar y configurar**:
     ```bash
     git clone https://github.com/devil1210/zeepub-bot.git
     cd zeepub-bot
@@ -125,9 +124,9 @@ Puedes ejecutar el bot fácilmente usando Docker y Docker Compose.
     ```
 
 2.  **Ejecutar**:
-    Esto descargará automáticamente la última versión de la imagen desde GitHub Container Registry.
+    Esto construirá la imagen localmente en tu máquina.
     ```bash
-    docker-compose up -d
+    docker-compose up -d --build
     ```
 
 3.  **Ver logs**:
