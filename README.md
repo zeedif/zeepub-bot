@@ -19,7 +19,7 @@
 
 ```text
 ├── main.py                    # Punto de entrada del bot
-├── project-init.py            # Script de inicialización
+├── Dockerfile                 # Configuración de Docker
 ├── README.md                  # Documentación del proyecto
 ├── .gitignore                 # Configuración de archivos ignorados
 ├── config/                    # Configuración del bot
@@ -30,10 +30,9 @@
 │   ├── session_manager.py
 │   └── state_manager.py
 ├── handlers/                  # Manejadores de comandos y mensajes
-│   ├── button_handler.py
+│   ├── callback_handlers.py
 │   ├── command_handlers.py
-│   ├── message_handlers.py
-│   └── start_and_auth.py
+│   └── message_handlers.py
 ├── opds/                      # Parser OPDS para catálogos
 │   ├── helpers.py
 │   └── parser.py
@@ -47,6 +46,7 @@
 │   ├── decorators.py
 │   └── http_client.py
 └── tests/                     # Pruebas unitarias
+    ├── test_group_behavior.py
     └── tests-init.py
 ```
 
@@ -93,11 +93,6 @@ nano .env
     - `TELEGRAM_TOKEN`
     - `OPDS_URL`
     - `MAX_DOWNLOADS`, `WINDOW_HOURS`
-5. Inicializar base de datos o configuraciones:
-
-```bash
-python project-init.py
-```
 
 
 ***
