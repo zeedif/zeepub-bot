@@ -33,6 +33,7 @@ __pycache__/
 # Excepciones: incluir solo los ficheros y directorios de código fuente
 !main.py
 !README.md
+!DOCKER_README.md
 
 !bot/
 !bot/*.py
