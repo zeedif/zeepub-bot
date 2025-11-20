@@ -6,6 +6,8 @@
 !Dockerfile
 !docker-compose.yml
 !.github/
+!.github/workflows/
+!.github/workflows/*.yml
 
 # Virtualenvs
 venv/
