@@ -50,7 +50,6 @@ __pycache__/
 !opds/*.py
 
 !tests/
-!tests/*.py
 
 !utils/
 !utils/*.py

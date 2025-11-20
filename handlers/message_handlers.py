@@ -13,6 +13,10 @@ logger = logging.getLogger(__name__)
 
 async def recibir_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Maneja mensajes de texto cuando se espera input del usuario."""
+    # Ignorar mensajes en grupos
+    if update.effective_chat.type != 'private':
+        return
+
     uid = update.effective_user.id
     st = state_manager.get_user_state(uid)
     text = update.message.text.strip()
@@ -82,8 +86,9 @@ async def recibir_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await mostrar_colecciones(update, context, search_url, from_collection=False)
         return
 
-    # 4) Cualquier otro texto
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text="Usa /start para comenzar o selecciona una opción del menú."
-    )
+    # 4) Cualquier otro texto - solo responder en chats privados
+    if update.effective_chat.type == 'private':
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="Usa /start para comenzar o selecciona una opción del menú."
+        )
