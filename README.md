@@ -115,14 +115,10 @@ python main.py
 
 Puedes ejecutar el bot fácilmente usando Docker y Docker Compose.
 
-### ☁️ Opción 1: Docker Hub (Recomendado)
+### ☁️ Opción 1: GitHub Container Registry (Automático)
 
 **1. En tu máquina principal (Subir imagen):**
-He incluido un script para automatizar esto. Solo necesitas ejecutar:
-```bash
-./publish.sh
-```
-*(Asegúrate de haber hecho `docker login` al menos una vez antes).*
+¡No tienes que hacer nada! GitHub Actions construirá y publicará la imagen automáticamente cada vez que hagas un `git push` a la rama `main`.
 
 **2. En la otra máquina (Descargar y ejecutar):**
 Solo necesitas copiar el archivo `docker-compose.yml` y tu archivo `.env`.
