@@ -8,9 +8,9 @@ services:
     restart: always
     env_file:
       - .env
-    volumes:
-      - ./config:/app/config
-      - ./plugins:/app/plugins
+      # volumes:
+      # - ./config:/app/config  # Only for development
+      # - ./plugins:/app/plugins  # Only for development
       # Uncomment if you want to persist logs outside
       # - ./logs:/app/logs
     logging:
