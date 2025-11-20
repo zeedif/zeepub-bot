@@ -3,6 +3,9 @@
 
 # Exceptuar este archivo .gitignore
 !.gitignore
+!Dockerfile
+!docker-compose.yml
+!.github/
 
 # Virtualenvs
 venv/
