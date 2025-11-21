@@ -277,6 +277,9 @@ class CommandHandlers:
                 )
             else:
                 logger.debug(f"Encontrados {len(feed.entries)} resultados")
+                # Asegurar que los resultados aparezcan en el chat actual
+                st["destino"] = update.effective_chat.id
+                st["chat_origen"] = update.effective_chat.id
                 await mostrar_colecciones(update, context, search_url, from_collection=False, new_message=True)
         else:
             # Sin término: pedir uno
