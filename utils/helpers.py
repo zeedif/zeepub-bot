@@ -3,6 +3,26 @@ import html
 from urllib.parse import urljoin, urlparse
 from config.config_settings import config
 
+def get_thread_id(update) -> int:
+    """
+    Extrae el message_thread_id de un Update de Telegram.
+    Retorna None si no hay thread_id (chat privado o grupo sin topics).
+    """
+    if not update:
+        return None
+    
+    # Intentar desde message
+    if hasattr(update, 'message') and update.message:
+        return getattr(update.message, 'message_thread_id', None)
+    
+    # Intentar desde callback_query.message
+    if hasattr(update, 'callback_query') and update.callback_query:
+        if hasattr(update.callback_query, 'message') and update.callback_query.message:
+            return getattr(update.callback_query.message, 'message_thread_id', None)
+    
+    return None
+
+
 def abs_url(base: str, href: str) -> str:
     return href if href.startswith("http") else urljoin(base, href)
 

@@ -19,6 +19,7 @@ class StateManager:
                 "titulo": "📚 Todas las bibliotecas",
                 "destino": None,
                 "chat_origen": None,
+                "message_thread_id": None,  # Para soporte de topics en grupos
                 "esperando_destino_manual": False,
                 "esperando_busqueda": False,
                 "esperando_password": False,

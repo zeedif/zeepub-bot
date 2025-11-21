@@ -149,9 +149,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception:
                 logger.debug("No se pudo borrar menú")
             try:
+                from utils.helpers import get_thread_id
+                thread_id = st.get("message_thread_id")  # Usar el guardado
+                
                 prep = await context.bot.send_message(
                     chat_id=chat_origen,
-                    text="⏳ Preparando..."
+                    text="⏳ Preparando...",
+                    message_thread_id=thread_id
                 )
                 menu_prep = (chat_origen, prep.message_id)
             except Exception as e:

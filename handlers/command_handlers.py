@@ -26,14 +26,25 @@ class CommandHandlers:
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /start: inicializa estado; admin->evil, otros->normal."""
+        from utils.helpers import get_thread_id
+        
         uid = update.effective_user.id
         left = downloads_left(uid)
         text = "✅ Descargas ilimitadas" if left == "ilimitadas" else f"⚡️ Te quedan {left} descargas"
-        await context.bot.send_message(chat_id=update.effective_chat.id, text=text)
+        
+        # Capturar message_thread_id para soporte de topics
+        thread_id = get_thread_id(update)
+        
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id, 
+            text=text,
+            message_thread_id=thread_id
+        )
 
         st = state_manager.get_user_state(uid)
         st["destino"] = update.effective_chat.id
         st["chat_origen"] = update.effective_chat.id
+        st["message_thread_id"] = thread_id
 
         # Administradores: mostrar selección de destino Evil directamente
         if uid in config.ADMIN_USERS:
@@ -58,7 +69,8 @@ class CommandHandlers:
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
                 text="🔧 Modo Evil: selecciona destino de publicación",
-                reply_markup=InlineKeyboardMarkup(keyboard)
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                message_thread_id=thread_id
             )
             return
 
@@ -72,6 +84,9 @@ class CommandHandlers:
 
     async def help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /help: muestra ayuda básica."""
+        from utils.helpers import get_thread_id
+        thread_id = get_thread_id(update)
+        
         text = (
             "🤖 *ZeePub Bot - Ayuda*\n\n"
             "/start - Iniciar y mostrar menú\n"
@@ -85,7 +100,8 @@ class CommandHandlers:
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text=text,
-            parse_mode="Markdown"
+            parse_mode="Markdown",
+            message_thread_id=thread_id
         )
 
     async def status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -126,10 +142,13 @@ class CommandHandlers:
 #           f"*Última página:* {st.get('ultima_pagina')}\n"
         )
 
+        from utils.helpers import get_thread_id
+        thread_id = get_thread_id(update)
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text=text,
-            parse_mode="Markdown"
+            parse_mode="Markdown",
+            message_thread_id=thread_id
         )
 
     async def cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -161,25 +180,34 @@ class CommandHandlers:
         except Exception:
             logger.debug("No se pudo borrar comando /cancel")
         
+        from utils.helpers import get_thread_id
+        thread_id = get_thread_id(update)
         await context.bot.send_message(
             chat_id=chat_id,
-            text="✅ Operación cancelada."
+            text="✅ Operación cancelada.",
+            message_thread_id=thread_id
         )
 
     async def plugins(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /plugins: lista plugins activos."""
         pm = getattr(self.app, "plugin_manager", None)
         if not pm:
+            from utils.helpers import get_thread_id
+            thread_id = get_thread_id(update)
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
-                text="❌ Sistema de plugins no disponible."
+                text="❌ Sistema de plugins no disponible.",
+                message_thread_id=thread_id
             )
             return
         plugins = pm.list_plugins()
         if not plugins:
+            from utils.helpers import get_thread_id
+            thread_id = get_thread_id(update)
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
-                text="📦 No hay plugins activos."
+                text="📦 No hay plugins activos.",
+                message_thread_id=thread_id
             )
             return
         text = "🔌 *Plugins activos:*\n\n"
@@ -198,9 +226,12 @@ class CommandHandlers:
         st["opds_root"] = config.OPDS_ROOT_EVIL
         st["historial"] = []
         st["esperando_password"] = True
+        from utils.helpers import get_thread_id
+        thread_id = get_thread_id(update)
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="🔒 Ingresa contraseña de 6 horas:"
+            text="🔒 Ingresa contraseña de 6 horas:",
+            message_thread_id=thread_id
         )
         st["msg_esperando_pwd"] = message.message_id
 
@@ -211,9 +242,12 @@ class CommandHandlers:
         # Marcar estado para recibir el término de búsqueda
         st["esperando_busqueda"] = True
         # Pedir término de búsqueda
+        from utils.helpers import get_thread_id
+        thread_id = get_thread_id(update)
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="🔍 Ingresa el título o palabra clave para buscar EPUB:"
+            text="🔍 Ingresa el título o palabra clave para buscar EPUB:",
+            message_thread_id=thread_id
         )
 
     async def reset_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):

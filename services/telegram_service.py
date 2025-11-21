@@ -23,8 +23,8 @@ from services.epub_service import parse_opf_from_epub, extract_cover_from_epub
 logger = logging.getLogger(__name__)
 
 
-async def send_photo_bytes(bot, chat_id, caption, data_or_path, filename="photo.jpg", parse_mode=None):
-    """Envía foto desde bytes o ruta de archivo."""
+async def send_photo_bytes(bot, chat_id, caption, data_or_path, filename="cover.jpg", parse_mode=None, message_thread_id=None):
+    """Envía imagen desde bytes o ruta de archivo."""
     if not data_or_path:
         return None
     try:
@@ -33,17 +33,17 @@ async def send_photo_bytes(bot, chat_id, caption, data_or_path, filename="photo.
             bio.name = filename
             bio.seek(0)
             input_file = InputFile(bio, filename=filename)
-            return await bot.send_photo(chat_id=chat_id, photo=input_file, caption=caption, parse_mode=parse_mode)
+            return await bot.send_photo(chat_id=chat_id, photo=input_file, caption=caption, parse_mode=parse_mode, message_thread_id=message_thread_id)
         elif isinstance(data_or_path, str) and os.path.exists(data_or_path):
             with open(data_or_path, "rb") as f:
                 input_file = InputFile(f, filename=filename)
-                return await bot.send_photo(chat_id=chat_id, photo=input_file, caption=caption, parse_mode=parse_mode)
+                return await bot.send_photo(chat_id=chat_id, photo=input_file, caption=caption, parse_mode=parse_mode, message_thread_id=message_thread_id)
     except Exception as e:
         logger.debug(f"Error send_photo_bytes: {e}")
     return None
 
 
-async def send_doc_bytes(bot, chat_id, caption, data_or_path, filename="file.epub", parse_mode=None):
+async def send_doc_bytes(bot, chat_id, caption, data_or_path, filename="file.epub", parse_mode=None, message_thread_id=None):
     """Envía documento EPUB desde bytes o ruta de archivo."""
     if not data_or_path:
         return None
@@ -53,11 +53,11 @@ async def send_doc_bytes(bot, chat_id, caption, data_or_path, filename="file.epu
             bio.name = filename
             bio.seek(0)
             input_file = InputFile(bio, filename=filename)
-            return await bot.send_document(chat_id=chat_id, document=input_file, caption=caption, parse_mode=parse_mode)
+            return await bot.send_document(chat_id=chat_id, document=input_file, caption=caption, parse_mode=parse_mode, message_thread_id=message_thread_id)
         elif isinstance(data_or_path, str) and os.path.exists(data_or_path):
             with open(data_or_path, "rb") as f:
                 input_file = InputFile(f, filename=filename)
-                return await bot.send_document(chat_id=chat_id, document=input_file, caption=caption, parse_mode=parse_mode)
+                return await bot.send_document(chat_id=chat_id, document=input_file, caption=caption, parse_mode=parse_mode, message_thread_id=message_thread_id)
     except Exception as e:
         logger.debug(f"Error send_doc_bytes: {e}")
     return None
@@ -72,15 +72,25 @@ async def publicar_libro(update, context: ContextTypes.DEFAULT_TYPE,
     lock = session_manager.get_publish_lock(uid)
     
     async with lock:
+        from utils.helpers import get_thread_id
+        thread_id_origen = get_thread_id(update)
+        
         destino = user_state.get("destino") or update.effective_chat.id
         chat_origen = user_state.get("chat_origen") or destino
         series_id = user_state.get("series_id")
         volume_id = user_state.get("volume_id")
         user_state["ultima_pagina"] = user_state.get("url", config.OPDS_ROOT_START)
+        
+        # Solo usar thread_id si destino == chat_origen
+        thread_id_destino = thread_id_origen if destino == chat_origen else None
 
         # Verificar límite antes de descargar
         if not can_download(uid):
-            await bot.send_message(chat_id=destino, text="🚫 Has alcanzado tu límite de descargas por hoy.")
+            await bot.send_message(
+                chat_id=destino, 
+                text="🚫 Has alcanzado tu límite de descargas por hoy.",
+                message_thread_id=thread_id_destino
+            )
             return
 
         # Obtener metadatos OPDS
@@ -128,7 +138,8 @@ async def publicar_libro(update, context: ContextTypes.DEFAULT_TYPE,
 
         await send_photo_bytes(
             bot, destino, mensaje_portada,
-            portada_data, filename="cover.jpg", parse_mode="HTML"
+            portada_data, filename="cover.jpg", parse_mode="HTML",
+            message_thread_id=thread_id_destino
         )
 
         if not cover_bytes:
@@ -148,11 +159,20 @@ async def publicar_libro(update, context: ContextTypes.DEFAULT_TYPE,
         if sinopsis:
             sinopsis_esc = escapar_html(sinopsis)
             texto = f"<b>Sinopsis:</b>\n<blockquote>{sinopsis_esc}</blockquote>\n#{generar_slug_from_meta(meta)}"
-            await bot.send_message(chat_id=destino, text=texto, parse_mode="HTML")
+            await bot.send_message(
+                chat_id=destino, 
+                text=texto, 
+                parse_mode="HTML",
+                message_thread_id=thread_id_destino
+            )
         else:
             slug = generar_slug_from_meta(meta)
             fallback = f"Sinopsis: (no disponible)\n#{slug}" if slug else "Sinopsis: (no disponible)"
-            await bot.send_message(chat_id=destino, text=fallback)
+            await bot.send_message(
+                chat_id=destino, 
+                text=fallback,
+                message_thread_id=thread_id_destino
+            )
 
         # Mostrar botones
         # Calcular tamaño y versión para el mensaje de confirmación
@@ -176,11 +196,12 @@ async def publicar_libro(update, context: ContextTypes.DEFAULT_TYPE,
                 f"📦 Tamaño: {size_mb:.2f} MB"
             )
             
-            # Enviar mensaje de información separado
+            # Enviar mensaje de información separado (siempre en chat_origen con thread_id)
             msg_info = await bot.send_message(
                 chat_id=chat_origen,
                 text=info_text,
-                parse_mode="HTML"
+                parse_mode="HTML",
+                message_thread_id=thread_id_origen
             )
             user_state["msg_info_id"] = msg_info.message_id
 
@@ -188,6 +209,7 @@ async def publicar_libro(update, context: ContextTypes.DEFAULT_TYPE,
             chat_id=chat_origen,
             text="¿Deseas descargar este EPUB?",
             parse_mode="HTML",
+            message_thread_id=thread_id_origen,
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("📥 Descargar EPUB", callback_data="descargar_epub")],
                 [InlineKeyboardButton("↩️ Volver", callback_data="volver_ultima")],
@@ -201,7 +223,11 @@ async def descargar_epub_pendiente(update, context: ContextTypes.DEFAULT_TYPE, u
     """Envía el EPUB guardado tras confirmación del usuario."""
     bot = context.bot
     user_state = state_manager.get_user_state(uid)
-    epub_buffer = user_state.pop("epub_buffer", None)
+    
+    from utils.helpers import get_thread_id
+    thread_id_origen = user_state.get("message_thread_id")  # Usar el guardado en el estado
+    
+    epub_buffer =user_state.pop("epub_buffer", None)
     epub_url = user_state.pop("epub_url", "")
     meta = user_state.pop("meta_pendiente", {})
     titulo = user_state.pop("titulo_pendiente", "")
@@ -209,6 +235,9 @@ async def descargar_epub_pendiente(update, context: ContextTypes.DEFAULT_TYPE, u
     msg_info_id = user_state.pop("msg_info_id", None)
     destino = user_state.get("destino") or update.effective_chat.id
     chat_origen = user_state.get("chat_origen") or destino
+    
+    # Solo usar thread_id si destino == chat_origen
+    thread_id_destino = thread_id_origen if destino == chat_origen else None
 
     # Borrar botones y mensaje de info
     if msg_id:
@@ -228,16 +257,28 @@ async def descargar_epub_pendiente(update, context: ContextTypes.DEFAULT_TYPE, u
 
     # Verificar que hay EPUB disponible
     if not epub_buffer:
-        await bot.send_message(chat_id=chat_origen, text="⚠️ EPUB no disponible.")
+        await bot.send_message(
+            chat_id=chat_origen, 
+            text="⚠️ EPUB no disponible.",
+            message_thread_id=thread_id_origen
+        )
         return
 
     # Verificar cuota nuevamente
     if not can_download(uid):
-        await bot.send_message(chat_id=destino, text="🚫 Límite de descargas alcanzado.")
+        await bot.send_message(
+            chat_id=destino, 
+            text="🚫 Límite de descargas alcanzado.",
+            message_thread_id=thread_id_destino
+        )
         return
 
     # Preparar envío
-    prep = await bot.send_message(chat_id=destino, text="⏳ Preparando archivo...")
+    prep = await bot.send_message(
+        chat_id=destino, 
+        text="⏳ Preparando archivo...",
+        message_thread_id=thread_id_destino
+    )
 
     try:
         # Enviar EPUB
@@ -265,7 +306,10 @@ async def descargar_epub_pendiente(update, context: ContextTypes.DEFAULT_TYPE, u
         if slug:
             caption += f"\n#{slug}"
         
-        await send_doc_bytes(bot, destino, caption, epub_buffer, filename=fname, parse_mode="HTML")
+        await send_doc_bytes(
+            bot, destino, caption, epub_buffer, filename=fname, parse_mode="HTML",
+            message_thread_id=thread_id_destino
+        )
 
         # Registrar descarga
         record_download(uid)
@@ -273,7 +317,11 @@ async def descargar_epub_pendiente(update, context: ContextTypes.DEFAULT_TYPE, u
 
         # Mostrar descargas restantes (excepto Premium)
         if restantes != "ilimitadas":
-            await bot.send_message(chat_id=destino, text=f"📥 Te quedan {restantes} descargas disponibles para hoy.")
+            await bot.send_message(
+                chat_id=destino, 
+                text=f"📥 Te quedan {restantes} descargas disponibles para hoy.",
+                message_thread_id=thread_id_destino
+            )
 
         cleanup_tmp(epub_buffer)
 
@@ -294,5 +342,6 @@ async def descargar_epub_pendiente(update, context: ContextTypes.DEFAULT_TYPE, u
     await bot.send_message(
         chat_id=chat_origen,
         text="Selecciona una opción:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        message_thread_id=thread_id_origen
     )

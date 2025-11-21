@@ -139,8 +139,15 @@ async def mostrar_colecciones(update, context: ContextTypes.DEFAULT_TYPE, url: s
     if new_message:
          # Si se pide mensaje nuevo, usar reply_text (o send_message)
          # Se asume que update tiene message o callback_query.message
+         from utils.helpers import get_thread_id
+         thread_id = get_thread_id(update)
          chat_id = update.effective_chat.id
-         await context.bot.send_message(chat_id=chat_id, text=title, reply_markup=reply_markup)
+         await context.bot.send_message(
+             chat_id=chat_id, 
+             text=title, 
+             reply_markup=reply_markup,
+             message_thread_id=thread_id
+         )
     elif hasattr(update, "message") and update.message:
         await update.message.reply_text(title, reply_markup=reply_markup)
     else:
