@@ -36,7 +36,28 @@ async def parse_opf_from_epub(data_or_path) -> Optional[Dict[str, Any]]:
         tag = elem.tag
         return tag.split("}", 1)[-1] if "}" in tag else tag
 
+    def local_name_attr(attr_name: str) -> str:
+        return attr_name.split("}", 1)[-1] if "}" in attr_name else attr_name
+
+    def parse_date(raw_date: str) -> str:
+        try:
+            if "T" in raw_date:
+                dt_str = raw_date.split("T")[0]
+                parts = dt_str.split("-")
+                if len(parts) == 3:
+                    return f"{parts[2]}-{parts[1]}-{parts[0]}"
+            else:
+                parts = raw_date.split("-")
+                if len(parts) == 3:
+                    return f"{parts[2]}-{parts[1]}-{parts[0]}"
+        except Exception:
+            pass
+        return raw_date
+
     def _parse_opf(data: bytes) -> Dict[str, Any]:
+        import logging
+        logger = logging.getLogger(__name__)
+        
         root = ET.fromstring(data)
         out: Dict[str, Any] = {
             "titulo_volumen": None,
@@ -51,7 +72,54 @@ async def parse_opf_from_epub(data_or_path) -> Optional[Dict[str, Any]]:
             "publisher": None,
             "publisher_url": None,
             "sinopsis": None,
+            "epub_version": None,
+            "fecha_modificacion": None,
+            "fecha_publicacion": None,
         }
+
+        # Version EPUB: <package version="...">
+        # root es el elemento <package>
+        version = root.attrib.get("version")
+        out["epub_version"] = version
+        logger.debug(f"EPUB version extracted: {version}")
+
+        # Fecha modificación: dcterms:modified
+        # Ejemplo: <meta property="dcterms:modified">2022-07-03T10:28:12Z</meta>
+        for el in root.iter():
+            ln = local_name(el).lower()
+            if ln == "meta":
+                # Obtener atributos property y name ignorando namespaces
+                attribs = {local_name_attr(k).lower(): v for k, v in el.attrib.items()}
+                prop = attribs.get("property", "")
+                name = attribs.get("name", "")
+                
+                if "modified" in prop or "modified" in name:
+                    if el.text:
+                        raw_date = el.text.strip()
+                        out["fecha_modificacion"] = parse_date(raw_date)
+                        logger.debug(f"Modified date found: {raw_date} -> {out['fecha_modificacion']}")
+                        break
+
+        # Fecha publicación: dc:date
+        # Ejemplo: <dc:date>2020-07-02T00:00:00Z</dc:date>
+        for el in root.iter():
+            ln = local_name(el).lower()
+            if ln == "date":
+                # Verificar si es dc:date (aunque local_name ya lo filtra, aseguramos que sea fecha)
+                if el.text:
+                    raw_date = el.text.strip()
+                    # Si ya tenemos una fecha, solo sobrescribimos si el evento es 'publication'
+                    attribs = {local_name_attr(k).lower(): v for k, v in el.attrib.items()}
+                    event = attribs.get("event", "")
+                    
+                    parsed = parse_date(raw_date)
+                    if not out["fecha_publicacion"]:
+                        out["fecha_publicacion"] = parsed
+                        logger.debug(f"Publication date found: {raw_date} -> {parsed}")
+                    elif event == "publication":
+                        out["fecha_publicacion"] = parsed
+                        logger.debug(f"Publication date (event=publication) found: {raw_date} -> {parsed}")
+                        break
 
         # Título volumen: primer <dc:title> o <title>
         for el in root.iter():

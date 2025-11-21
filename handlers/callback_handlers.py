@@ -219,12 +219,19 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Volver a última página donde se listaban los EPUB
     if data == "volver_ultima":
+        # Borrar mensaje de botones (el actual)
+        try:
+            await query.message.delete()
+        except Exception:
+            pass
+
         last_url = st.get("ultima_pagina")
         if last_url:
             # Opcional: Si también guardas el título anterior, úsalo aquí
             st["titulo"] = "📚 Última página"
             st["url"] = last_url
-            await mostrar_colecciones(update, context, last_url, from_collection=True)
+            # Usar new_message=True para que no borre el mensaje del libro
+            await mostrar_colecciones(update, context, last_url, from_collection=True, new_message=True)
         else:
             # Si no hay última página guardada, usar historial como antes
             if "historial" not in st:
@@ -234,17 +241,17 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if last_page and last_page.get("url"):
                     st["titulo"] = last_page["titulo"]
                     st["url"] = last_page["url"]
-                    await mostrar_colecciones(update, context, last_page["url"], from_collection=True)
+                    await mostrar_colecciones(update, context, last_page["url"], from_collection=True, new_message=True)
                 else:
                     root = st.get("opds_root_base") or st.get("opds_root")
                     st["titulo"] = "📚 Categorías"
                     st["url"] = root
-                    await mostrar_colecciones(update, context, root, from_collection=False)
+                    await mostrar_colecciones(update, context, root, from_collection=False, new_message=True)
             else:
                 root = st.get("opds_root_base") or st.get("opds_root")
                 st["titulo"] = "📚 Categorías"
                 st["url"] = root
-                await mostrar_colecciones(update, context, root, from_collection=False)
+                await mostrar_colecciones(update, context, root, from_collection=False, new_message=True)
         return
 
     # Cerrar menú
@@ -263,7 +270,7 @@ def register_handlers(app):
     # CallbackQuery handlers
     app.add_handler(CallbackQueryHandler(set_destino, pattern="^destino\\|"))
     app.add_handler(CallbackQueryHandler(buscar_epub, pattern="^buscar$"))
-    app.add_handler(CallbackQueryHandler(button_handler, pattern="^(col\\||lib\\||nav\\||subir_nivel|volver_colecciones|volver_ultima|cerrar)"))
+    app.add_handler(CallbackQueryHandler(button_handler, pattern="^(col\\||lib\\||nav\\||subir_nivel|volver_colecciones|volver_ultima|cerrar|descargar_epub)"))
     # Texto libre handlers
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_manual_destino))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_search_text))

@@ -120,6 +120,8 @@ def formatear_mensaje_portada(meta: dict) -> str:
         f"<b>Autor:</b> {autor}",
         f"<b>Ilustrador:</b> {ilustrador}",
     ]
+    if meta.get("fecha_publicacion"):
+        lines.append(f"<b>Publicado:</b> {meta['fecha_publicacion']}")
     if traduccion_line:
         lines.append(traduccion_line)
     # No filtramos cadenas vacías para preservar los saltos de línea

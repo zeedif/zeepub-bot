@@ -43,7 +43,7 @@ async def send_photo_bytes(bot, chat_id, caption, data_or_path, filename="photo.
     return None
 
 
-async def send_doc_bytes(bot, chat_id, caption, data_or_path, filename="file.epub"):
+async def send_doc_bytes(bot, chat_id, caption, data_or_path, filename="file.epub", parse_mode=None):
     """Envía documento EPUB desde bytes o ruta de archivo."""
     if not data_or_path:
         return None
@@ -53,11 +53,11 @@ async def send_doc_bytes(bot, chat_id, caption, data_or_path, filename="file.epu
             bio.name = filename
             bio.seek(0)
             input_file = InputFile(bio, filename=filename)
-            return await bot.send_document(chat_id=chat_id, document=input_file, caption=caption)
+            return await bot.send_document(chat_id=chat_id, document=input_file, caption=caption, parse_mode=parse_mode)
         elif isinstance(data_or_path, str) and os.path.exists(data_or_path):
             with open(data_or_path, "rb") as f:
                 input_file = InputFile(f, filename=filename)
-                return await bot.send_document(chat_id=chat_id, document=input_file, caption=caption)
+                return await bot.send_document(chat_id=chat_id, document=input_file, caption=caption, parse_mode=parse_mode)
     except Exception as e:
         logger.debug(f"Error send_doc_bytes: {e}")
     return None
@@ -100,7 +100,8 @@ async def publicar_libro(update, context: ContextTypes.DEFAULT_TYPE,
                         for key in ("titulo_serie", "titulo_volumen", "ilustrador",
                                     "categoria", "publisher", "publisher_url",
                                     "generos", "demografia", "maquetadores",
-                                    "traductor", "sinopsis"):
+                                    "traductor", "sinopsis", "epub_version",
+                                    "fecha_modificacion", "fecha_publicacion"):
                             if opf_meta.get(key):
                                 meta[key] = opf_meta[key]
                 except Exception as e:
@@ -154,9 +155,32 @@ async def publicar_libro(update, context: ContextTypes.DEFAULT_TYPE,
             await bot.send_message(chat_id=destino, text=fallback)
 
         # Mostrar botones
+        # Calcular tamaño y versión para el mensaje de confirmación
+        if epub_downloaded:
+            size_mb = len(epub_downloaded) / (1024 * 1024)
+            version = meta.get("epub_version", "2.0")
+            fecha = meta.get("fecha_modificacion", "Desconocida")
+            titulo_vol = meta.get("titulo_volumen") or titulo or "Desconocido"
+            
+            info_text = (
+                f"📂 <b>{titulo_vol}</b>\n"
+                f"ℹ️ Versión Epub: {version}\n"
+                f"📅 Actualizado: {fecha}\n"
+                f"📦 Tamaño: {size_mb:.2f} MB"
+            )
+            
+            # Enviar mensaje de información separado
+            msg_info = await bot.send_message(
+                chat_id=chat_origen,
+                text=info_text,
+                parse_mode="HTML"
+            )
+            user_state["msg_info_id"] = msg_info.message_id
+
         sent = await bot.send_message(
             chat_id=chat_origen,
             text="¿Deseas descargar este EPUB?",
+            parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("📥 Descargar EPUB", callback_data="descargar_epub")],
                 [InlineKeyboardButton("↩️ Volver", callback_data="volver_ultima")],
@@ -175,13 +199,19 @@ async def descargar_epub_pendiente(update, context: ContextTypes.DEFAULT_TYPE, u
     meta = user_state.pop("meta_pendiente", {})
     titulo = user_state.pop("titulo_pendiente", "")
     msg_id = user_state.pop("msg_botones_id", None)
+    msg_info_id = user_state.pop("msg_info_id", None)
     destino = user_state.get("destino") or update.effective_chat.id
     chat_origen = user_state.get("chat_origen") or destino
 
-    # Borrar botones
+    # Borrar botones y mensaje de info
     if msg_id:
         try:
             await bot.delete_message(chat_id=chat_origen, message_id=msg_id)
+        except:
+            pass
+    if msg_info_id:
+        try:
+            await bot.delete_message(chat_id=chat_origen, message_id=msg_info_id)
         except:
             pass
 
@@ -205,12 +235,25 @@ async def descargar_epub_pendiente(update, context: ContextTypes.DEFAULT_TYPE, u
     try:
         # Enviar EPUB
         fname = unquote(urlparse(epub_url).path.split("/")[-1]) or "archivo.epub"
-        caption = (meta.get("titulo_volumen") or titulo or "").strip()
+        
+        # Calcular tamaño
+        size_mb = len(epub_buffer) / (1024 * 1024)
+        version = meta.get("epub_version", "2.0") # Default a 2.0 si no se encuentra
+        fecha = meta.get("fecha_modificacion", "Desconocida")
+        titulo_vol = meta.get("titulo_volumen") or titulo or "Desconocido"
+        
+        caption = (
+            f"📂 <b>{titulo_vol}</b>\n"
+            f"ℹ️ Versión Epub: {version}\n"
+            f"📅 Actualizado: {fecha}\n"
+            f"📦 Tamaño: {size_mb:.2f} MB"
+        )
+        
         slug = generar_slug_from_meta(meta)
         if slug:
             caption += f"\n#{slug}"
         
-        await send_doc_bytes(bot, destino, caption, epub_buffer, filename=fname)
+        await send_doc_bytes(bot, destino, caption, epub_buffer, filename=fname, parse_mode="HTML")
 
         # Registrar descarga
         record_download(uid)
@@ -224,10 +267,11 @@ async def descargar_epub_pendiente(update, context: ContextTypes.DEFAULT_TYPE, u
 
     finally:
         # Eliminar mensaje de preparación
-        try:
-            await bot.delete_message(chat_id=destino, message_id=prep.message_id)
-        except:
-            pass
+        if prep:
+            try:
+                await bot.delete_message(chat_id=destino, message_id=prep.message_id)
+            except:
+                pass
 
     # Mostrar opciones finales
     keyboard = [

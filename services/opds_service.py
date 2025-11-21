@@ -13,7 +13,7 @@ from utils.helpers import abs_url, find_zeepubs_destino
 logger = logging.getLogger(__name__)
 
 
-async def mostrar_colecciones(update, context: ContextTypes.DEFAULT_TYPE, url: str, from_collection: bool = False):
+async def mostrar_colecciones(update, context: ContextTypes.DEFAULT_TYPE, url: str, from_collection: bool = False, new_message: bool = False):
     """Mostrar colecciones o libros basados en un feed OPDS."""
     uid = update.effective_user.id
     st = state_manager.get_user_state(uid)
@@ -43,7 +43,7 @@ async def mostrar_colecciones(update, context: ContextTypes.DEFAULT_TYPE, url: s
 
     # enlaces de navegación (paginación dentro de la misma biblioteca)
     logger.debug(f"Total links en feed: {len(getattr(feed.feed, 'links', []))}")
-    for link in getattr(feed.feed, "links", []):
+    for link in getattr(feed.feed, 'links', []):
         rel = getattr(link, "rel", "")
         href = abs_url(config.BASE_URL, link.href)
         logger.debug(f"Link encontrado - rel: {rel}, href: {href}")
@@ -136,7 +136,12 @@ async def mostrar_colecciones(update, context: ContextTypes.DEFAULT_TYPE, url: s
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     # Enviar o editar mensaje
-    if hasattr(update, "message") and update.message:
+    if new_message:
+         # Si se pide mensaje nuevo, usar reply_text (o send_message)
+         # Se asume que update tiene message o callback_query.message
+         chat_id = update.effective_chat.id
+         await context.bot.send_message(chat_id=chat_id, text=title, reply_markup=reply_markup)
+    elif hasattr(update, "message") and update.message:
         await update.message.reply_text(title, reply_markup=reply_markup)
     else:
         await update.callback_query.edit_message_text(title, reply_markup=reply_markup)

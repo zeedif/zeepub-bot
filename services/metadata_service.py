@@ -66,6 +66,7 @@ async def obtener_metadatos_opds(series_id: str, volume_id: str) -> Dict[str, An
         "tags": [],
         "categoria": None,
         "demografia": None,
+        "fecha_publicacion": None,
     }
     if not series_id or not volume_id:
         return datos
@@ -114,6 +115,17 @@ async def obtener_metadatos_opds(series_id: str, volume_id: str) -> Dict[str, An
                     role = creator.attrib.get("role", "").lower()
                     if "illustrator" in role or "artist" in role:
                         datos["ilustrador"] = creator.text.strip()
+
+                # Fecha publicación (dc:date o dcterms:issued)
+                # Intentamos con el namespace definido (dc -> terms)
+                date_el = entry.find("dc:date", ns)
+                if date_el is not None and date_el.text:
+                    datos["fecha_publicacion"] = date_el.text.strip()
+                else:
+                    # Si no, probamos con dcterms:issued si existiera (aunque ns dc es terms)
+                    issued = entry.find("dc:issued", ns)
+                    if issued is not None and issued.text:
+                        datos["fecha_publicacion"] = issued.text.strip()
                 break
 
     except Exception as e:
