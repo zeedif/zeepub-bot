@@ -72,8 +72,11 @@ async def recibir_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # 3) Búsqueda de EPUB
     if st.get("esperando_busqueda"):
+        logger.debug(f"Usuario {uid} buscando: {text}")
         st["esperando_busqueda"] = False
+        st["message_thread_id"] = thread_id  # Guardar thread_id
         search_url = build_search_url(text, uid)
+        logger.debug(f"URL de búsqueda: {search_url}")
         feed = await parse_feed_from_url(search_url)
         if not feed or not getattr(feed, "entries", []):
             keyboard = [
@@ -87,6 +90,7 @@ async def recibir_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 message_thread_id=thread_id
             )
         else:
+            logger.debug(f"Encontrados {len(feed.entries)} resultados")
             await mostrar_colecciones(update, context, search_url, from_collection=False)
         return
 
