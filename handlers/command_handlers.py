@@ -237,9 +237,15 @@ class CommandHandlers:
 
     async def search(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /search: busca EPUB con término inline o pide uno."""
+        from utils.helpers import get_thread_id, is_command_for_bot
+        
+        # En grupos con múltiples bots, ignorar si el comando no es para este bot
+        bot_username = context.bot.username
+        if not is_command_for_bot(update, bot_username):
+            return
+        
         uid = update.effective_user.id
         st = state_manager.get_user_state(uid)
-        from utils.helpers import get_thread_id
         thread_id = get_thread_id(update)
         st["message_thread_id"] = thread_id  # Guardar para respuestas
         
@@ -271,7 +277,7 @@ class CommandHandlers:
                 )
             else:
                 logger.debug(f"Encontrados {len(feed.entries)} resultados")
-                await mostrar_colecciones(update, context, search_url, from_collection=False)
+                await mostrar_colecciones(update, context, search_url, from_collection=False, new_message=True)
         else:
             # Sin término: pedir uno
             st["esperando_busqueda"] = True

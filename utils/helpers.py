@@ -23,6 +23,50 @@ def get_thread_id(update) -> int:
     return None
 
 
+def is_command_for_bot(update, bot_username: str) -> bool:
+    """
+    Verifica si un comando está dirigido a este bot específicamente.
+    En grupos con múltiples bots, los comandos pueden ir dirigidos a un bot
+    específico usando /comando@nombrebot
+    
+    Args:
+        update: Update de Telegram
+        bot_username: Username del bot (sin @)
+    
+    Returns:
+        True si el comando es para este bot o no tiene bot específico (chat privado)
+        False si el comando es para otro bot
+    """
+    if not update or not hasattr(update, 'message') or not update.message:
+        return True
+    
+    # En chats privados, siempre es para este bot
+    if update.effective_chat.type == 'private':
+        return True
+    
+    # Verificar si el mensaje tiene entidades de comando
+    if not update.message.entities:
+        return True
+    
+    # Buscar la entidad de bot_command
+    for entity in update.message.entities:
+        if entity.type == 'bot_command':
+            # Extraer el texto del comando
+            command_text = update.message.text[entity.offset:entity.offset + entity.length]
+            
+            # Si el comando tiene @botusername, verificar que sea este bot
+            if '@' in command_text:
+                # Formato: /comando@botusername
+                mentioned_bot = command_text.split('@')[1]
+                return mentioned_bot.lower() == bot_username.lower()
+            
+            # Si no tiene @, acepta el comando (comportamiento por defecto)
+            return True
+    
+    return True
+
+
+
 def abs_url(base: str, href: str) -> str:
     return href if href.startswith("http") else urljoin(base, href)
 
