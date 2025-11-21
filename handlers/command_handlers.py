@@ -236,19 +236,51 @@ class CommandHandlers:
         st["msg_esperando_pwd"] = message.message_id
 
     async def search(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /search: pide al usuario un término para buscar EPUB."""
+        """Handle /search: busca EPUB con término inline o pide uno."""
         uid = update.effective_user.id
         st = state_manager.get_user_state(uid)
-        # Marcar estado para recibir el término de búsqueda
-        st["esperando_busqueda"] = True
-        # Pedir término de búsqueda
         from utils.helpers import get_thread_id
         thread_id = get_thread_id(update)
-        await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text="🔍 Ingresa el título o palabra clave para buscar EPUB:",
-            message_thread_id=thread_id
-        )
+        st["message_thread_id"] = thread_id  # Guardar para respuestas
+        
+        # Verificar si hay término de búsqueda en el comando
+        if context.args:
+            # Hay término: /search harry potter
+            termino = " ".join(context.args).strip()
+            logger.debug(f"Usuario {uid} buscando con /search: {termino}")
+            
+            from utils.helpers import build_search_url
+            from utils.http_client import parse_feed_from_url
+            from services.opds_service import mostrar_colecciones
+            from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+            
+            search_url = build_search_url(termino, uid)
+            logger.debug(f"URL de búsqueda: {search_url}")
+            feed = await parse_feed_from_url(search_url)
+            
+            if not feed or not getattr(feed, "entries", []):
+                keyboard = [
+                    [InlineKeyboardButton("🔄 Volver a buscar", callback_data="buscar")],
+                    [InlineKeyboardButton("📚 Ir a colecciones", callback_data="volver_colecciones")],
+                ]
+                await context.bot.send_message(
+                    chat_id=update.effective_chat.id,
+                    text=f"🔍 No se encontraron resultados para: {termino}",
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    message_thread_id=thread_id
+                )
+            else:
+                logger.debug(f"Encontrados {len(feed.entries)} resultados")
+                await mostrar_colecciones(update, context, search_url, from_collection=False)
+        else:
+            # Sin término: pedir uno
+            st["esperando_busqueda"] = True
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="🔍 Ingresa el título o palabra clave para buscar EPUB:",
+                message_thread_id=thread_id
+            )
+
 
     async def reset_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Resetea el contador de descargas de un usuario (solo admins)."""

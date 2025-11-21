@@ -61,8 +61,34 @@ async def buscar_epub(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     uid = update.effective_user.id
     st = state_manager.get_user_state(uid)
-    st["esperando_busqueda"] = True
-    await query.edit_message_text("🔍 Escribe parte del título del EPUB:")
+    chat = update.effective_chat
+    
+    # En chats privados, siempre usar texto libre
+    if chat.type == 'private':
+        st["esperando_busqueda"] = True
+        await query.edit_message_text("🔍 Escribe parte del título del EPUB:")
+        return
+    
+    # En grupos, verificar si el bot es administrador
+    try:
+        bot_member = await context.bot.get_chat_member(chat.id, context.bot.id)
+        is_admin = bot_member.status in ['administrator', 'creator']
+    except Exception:
+        is_admin = False
+    
+    if is_admin:
+        # Bot es admin: puede recibir mensajes normales
+        st["esperando_busqueda"] = True
+        await query.edit_message_text("🔍 Escribe parte del título del EPUB:")
+    else:
+        # Bot NO es admin: solo recibe comandos
+        await query.edit_message_text(
+            "🔍 Para buscar, usa el comando:\n\n"
+            "<code>/search término de búsqueda</code>\n\n"
+            "Ejemplo: <code>/search harry potter</code>",
+            parse_mode="HTML"
+        )
+
 
 async def handle_search_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Captura texto tras /search o tras inline 'Buscar EPUB'."""
