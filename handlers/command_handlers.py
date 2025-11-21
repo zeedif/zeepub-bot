@@ -7,6 +7,8 @@ from core.state_manager import state_manager
 from utils.download_limiter import downloads_left, record_download, can_download
 from services.opds_service import mostrar_colecciones
 from config.config_settings import config
+from utils.helpers import get_thread_id, is_command_for_bot, build_search_url
+from utils.http_client import parse_feed_from_url
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +28,7 @@ class CommandHandlers:
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /start: inicializa estado; admin->evil, otros->normal."""
-        from utils.helpers import get_thread_id
+        
         
         uid = update.effective_user.id
         left = downloads_left(uid)
@@ -84,7 +86,6 @@ class CommandHandlers:
 
     async def help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /help: muestra ayuda básica."""
-        from utils.helpers import get_thread_id
         thread_id = get_thread_id(update)
         
         text = (
@@ -108,7 +109,7 @@ class CommandHandlers:
         """Handle /status: informa estado interno, nivel de usuario y descargas restantes."""
         uid = update.effective_user.id
         st = state_manager.get_user_state(uid)
-        from config.config_settings import config
+        st = state_manager.get_user_state(uid)
 
         # Determinar nivel de usuario y máximo de descargas
         if uid in config.PREMIUM_LIST:
@@ -142,7 +143,6 @@ class CommandHandlers:
 #           f"*Última página:* {st.get('ultima_pagina')}\n"
         )
 
-        from utils.helpers import get_thread_id
         thread_id = get_thread_id(update)
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
@@ -180,7 +180,6 @@ class CommandHandlers:
         except Exception:
             logger.debug("No se pudo borrar comando /cancel")
         
-        from utils.helpers import get_thread_id
         thread_id = get_thread_id(update)
         await context.bot.send_message(
             chat_id=chat_id,
@@ -192,7 +191,6 @@ class CommandHandlers:
         """Handle /plugins: lista plugins activos."""
         pm = getattr(self.app, "plugin_manager", None)
         if not pm:
-            from utils.helpers import get_thread_id
             thread_id = get_thread_id(update)
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
@@ -202,7 +200,6 @@ class CommandHandlers:
             return
         plugins = pm.list_plugins()
         if not plugins:
-            from utils.helpers import get_thread_id
             thread_id = get_thread_id(update)
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
@@ -226,7 +223,6 @@ class CommandHandlers:
         st["opds_root"] = config.OPDS_ROOT_EVIL
         st["historial"] = []
         st["esperando_password"] = True
-        from utils.helpers import get_thread_id
         thread_id = get_thread_id(update)
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
@@ -237,8 +233,6 @@ class CommandHandlers:
 
     async def search(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /search: busca EPUB con término inline o pide uno."""
-        from utils.helpers import get_thread_id, is_command_for_bot
-        
         # En grupos con múltiples bots, ignorar si el comando no es para este bot
         bot_username = context.bot.username
         if not is_command_for_bot(update, bot_username):
@@ -254,11 +248,6 @@ class CommandHandlers:
             # Hay término: /search harry potter
             termino = " ".join(context.args).strip()
             logger.debug(f"Usuario {uid} buscando con /search: {termino}")
-            
-            from utils.helpers import build_search_url
-            from utils.http_client import parse_feed_from_url
-            from services.opds_service import mostrar_colecciones
-            from telegram import InlineKeyboardButton, InlineKeyboardMarkup
             
             search_url = build_search_url(termino, uid)
             logger.debug(f"URL de búsqueda: {search_url}")

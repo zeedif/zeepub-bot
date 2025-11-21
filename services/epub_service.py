@@ -4,10 +4,10 @@ import io
 import os
 import zipfile
 import xml.etree.ElementTree as ET
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union
 from utils.helpers import limpiar_html_basico
 
-async def parse_opf_from_epub(data_or_path) -> Optional[Dict[str, Any]]:
+async def parse_opf_from_epub(data_or_path: Union[bytes, str]) -> Dict[str, Any]:
     """
     Extrae metadatos OPF de un EPUB (bytes o ruta) usando namespaces y heurísticas.
     Retorna dict con claves:

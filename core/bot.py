@@ -40,18 +40,7 @@ class ZeePubBot:
 
         # Comandos
         self.command_handlers = CommandHandlers(self.app)
-        # Los siguientes pueden omitirse si CommandHandlers ya los registra,
-        # pero aseguran que estén siempre presentes:
-        self.app.add_handler(CommandHandler("start", self.command_handlers.start))
-        self.app.add_handler(CommandHandler("help", self.command_handlers.help))
-        self.app.add_handler(CommandHandler("status", self.command_handlers.status))
-        self.app.add_handler(CommandHandler("cancel", self.command_handlers.cancel))
-        self.app.add_handler(CommandHandler("plugins", self.command_handlers.plugins))
-        self.app.add_handler(CommandHandler("evil", self.command_handlers.evil))
-        # Registrar /search si no está en CommandHandlers
-        self.app.add_handler(CommandHandler("search", self.command_handlers.search))
-        # Registrar /reset para administradores
-        self.app.add_handler(CommandHandler("reset", self.command_handlers.reset_command))
+        # Handlers are registered in CommandHandlers.__init__
 
         # Callbacks
         self.app.add_handler(CallbackQueryHandler(set_destino, pattern="^destino"))

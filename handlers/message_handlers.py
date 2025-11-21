@@ -8,6 +8,7 @@ from services.opds_service import mostrar_colecciones
 from config.config_settings import config
 from utils.helpers import build_search_url
 from utils.http_client import parse_feed_from_url
+from utils.helpers import get_thread_id
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,6 @@ async def recibir_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     chat_type = update.effective_chat.type
     
-    from utils.helpers import get_thread_id
     thread_id = get_thread_id(update)
 
     # 1) Contraseña para modo 'evil'
