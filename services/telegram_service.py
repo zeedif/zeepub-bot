@@ -157,7 +157,14 @@ async def publicar_libro(update, context: ContextTypes.DEFAULT_TYPE,
         # Mostrar botones
         # Calcular tamaño y versión para el mensaje de confirmación
         if epub_downloaded:
-            size_mb = len(epub_downloaded) / (1024 * 1024)
+            # Calcular tamaño: fetch_bytes puede devolver bytes o ruta de archivo
+            if isinstance(epub_downloaded, (bytes, bytearray)):
+                size_mb = len(epub_downloaded) / (1024 * 1024)
+            elif isinstance(epub_downloaded, str) and os.path.exists(epub_downloaded):
+                size_mb = os.path.getsize(epub_downloaded) / (1024 * 1024)
+            else:
+                size_mb = 0.0
+                
             version = meta.get("epub_version", "2.0")
             fecha = meta.get("fecha_modificacion", "Desconocida")
             titulo_vol = meta.get("titulo_volumen") or titulo or "Desconocido"
@@ -236,8 +243,13 @@ async def descargar_epub_pendiente(update, context: ContextTypes.DEFAULT_TYPE, u
         # Enviar EPUB
         fname = unquote(urlparse(epub_url).path.split("/")[-1]) or "archivo.epub"
         
-        # Calcular tamaño
-        size_mb = len(epub_buffer) / (1024 * 1024)
+        # Calcular tamaño: epub_buffer puede ser bytes o ruta de archivo
+        if isinstance(epub_buffer, (bytes, bytearray)):
+            size_mb = len(epub_buffer) / (1024 * 1024)
+        elif isinstance(epub_buffer, str) and os.path.exists(epub_buffer):
+            size_mb = os.path.getsize(epub_buffer) / (1024 * 1024)
+        else:
+            size_mb = 0.0
         version = meta.get("epub_version", "2.0") # Default a 2.0 si no se encuentra
         fecha = meta.get("fecha_modificacion", "Desconocida")
         titulo_vol = meta.get("titulo_volumen") or titulo or "Desconocido"
