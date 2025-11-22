@@ -52,7 +52,25 @@ class ZeePubBot:
         self.app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_texto))
 
     def start(self):
-        """Arranca el bot en polling."""
+        """Arranca el bot en polling (bloqueante, modo legacy)."""
         logger.info("Bot iniciado, entrando en polling...")
         self.app.run_polling()
         session_manager.close()
+
+    async def initialize(self):
+        """Inicializa la aplicación (para uso con API)."""
+        await self.app.initialize()
+
+    async def start_async(self):
+        """Inicia el bot y el polling de forma asíncrona (para uso con API)."""
+        await self.app.start()
+        await self.app.updater.start_polling()
+        logger.info("Bot iniciado en modo asíncrono (API).")
+
+    async def stop_async(self):
+        """Detiene el bot de forma asíncrona."""
+        await self.app.updater.stop()
+        await self.app.stop()
+        await self.app.shutdown()
+        session_manager.close()
+        logger.info("Bot detenido (API).")

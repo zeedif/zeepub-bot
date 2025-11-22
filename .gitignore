@@ -61,4 +61,9 @@ __pycache__/
 !utils/
 !utils/*.py
 
+!api/
+!api/*.py
+
+!run_with_api.py
+
 !requirements.txt
