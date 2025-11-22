@@ -66,4 +66,7 @@ __pycache__/
 
 !run_with_api.py
 
+!zeepub-web/
+!zeepub-web/**
+
 !requirements.txt
