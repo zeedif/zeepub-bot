@@ -32,7 +32,7 @@ class CommandHandlers:
         
         uid = update.effective_user.id
         left = downloads_left(uid)
-        text = "✅ Descargas ilimitadas" if left == "ilimitadas" else f"⚡️ Te quedan {left} descargas"
+        text = "👋 ¡Hola! Comencemos.\n\n✅ Tienes descargas ilimitadas." if left == "ilimitadas" else f"👋 ¡Hola! Comencemos.\n\n⚡️ Te quedan {left} descargas hoy."
         
         # Capturar message_thread_id para soporte de topics
         thread_id = get_thread_id(update)
@@ -70,7 +70,7 @@ class CommandHandlers:
             ]
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
-                text="🔧 Modo Evil: selecciona destino de publicación",
+                text="🔧 Modo Evil: ¿Dónde quieres publicar?",
                 reply_markup=InlineKeyboardMarkup(keyboard),
                 message_thread_id=thread_id
             )
@@ -89,14 +89,12 @@ class CommandHandlers:
         thread_id = get_thread_id(update)
         
         text = (
-            "🤖 *ZeePub Bot - Ayuda*\n\n"
-            "/start - Iniciar y mostrar menú\n"
-#           "/search - Buscar EPUB por título\n"
-            "/help - Mostrar esta ayuda\n"
-            "/status - Ver estado del bot y estado de usuario\n"
-            "/cancel - Cancelar acción actual\n"
-#           "/plugins - Mostrar plugins cargados\n"
-#           "/evil - Modo privado (requiere contraseña)\n"
+            "🤖 *Ayuda de ZeePub Bot*\n\n"
+            "Aquí tienes lo que puedo hacer por ti:\n\n"
+            "/start - 🚀 Comencemos\n"
+            "/help - ℹ️ Mostrar esta ayuda\n"
+            "/status - 📊 Ver tu estado y descargas\n"
+            "/cancel - ❌ Cancelar acción actual\n"
         )
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
@@ -134,13 +132,11 @@ class CommandHandlers:
             left_text = f"⚡️ Te quedan {remaining if remaining>0 else 0} descargas por día (de {max_dl})"
 
         text = (
-            "📊 *Estado del Bot y de Usuario*\n\n"
-            f"*Usuario:* {update.effective_user.first_name}\n"
-            f"*ID:* {uid}\n"
-            f"*Nivel:* {user_level}\n"
-            f"*Descargas restantes:* {left_text}\n"
-#           f"*Root OPDS:* {st.get('opds_root')}\n"
-#           f"*Última página:* {st.get('ultima_pagina')}\n"
+            "📊 *Tu Estado*\n\n"
+            f"👤 *Usuario:* {update.effective_user.first_name}\n"
+            f"🆔 *ID:* {uid}\n"
+            f"⭐ *Nivel:* {user_level}\n"
+            f"📉 *Descargas:* {left_text}\n"
         )
 
         thread_id = get_thread_id(update)
@@ -183,7 +179,7 @@ class CommandHandlers:
         thread_id = get_thread_id(update)
         await context.bot.send_message(
             chat_id=chat_id,
-            text="✅ Operación cancelada.",
+            text="✅ ¡Entendido! Operación cancelada.",
             message_thread_id=thread_id
         )
 
@@ -226,7 +222,7 @@ class CommandHandlers:
         thread_id = get_thread_id(update)
         message = await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="🔒 Ingresa contraseña de 6 horas:",
+            text="🔒 Modo Privado. Por favor, ingresa la contraseña:",
             message_thread_id=thread_id
         )
         st["msg_esperando_pwd"] = message.message_id
@@ -260,7 +256,7 @@ class CommandHandlers:
                 ]
                 await context.bot.send_message(
                     chat_id=update.effective_chat.id,
-                    text=f"🔍 No se encontraron resultados para: {termino}",
+                    text=f"🔍 Mmm, no encontré nada para: {termino}",
                     reply_markup=InlineKeyboardMarkup(keyboard),
                     message_thread_id=thread_id
                 )
@@ -275,7 +271,7 @@ class CommandHandlers:
             st["esperando_busqueda"] = True
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
-                text="🔍 Ingresa el título o palabra clave para buscar EPUB:",
+                text="🔍 ¿Qué libro buscas? Escribe el título o autor:",
                 message_thread_id=thread_id
             )
 
