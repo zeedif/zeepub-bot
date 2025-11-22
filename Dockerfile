@@ -12,4 +12,7 @@ COPY . .
 # Variables de entorno por defecto (se pueden sobrescribir)
 ENV LOG_LEVEL=INFO
 
-CMD ["python", "main.py"]
+# Exponer el puerto de la API
+EXPOSE 8000
+
+CMD ["python", "run_with_api.py"]
