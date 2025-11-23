@@ -13,8 +13,16 @@ load_dotenv()
 class BotConfig:
     TELEGRAM_TOKEN: str = os.getenv("TELEGRAM_TOKEN", "")
     BASE_URL: str = os.getenv("BASE_URL", "")
+    # URL base del servidor OPDS (ej: https://apps.tailfe99c.ts.net)
+    OPDS_SERVER_URL: str = os.getenv("OPDS_SERVER_URL", "")
+    
+    # URL de la Mini App (para botones y referencias)
+    WEBAPP_URL: str = os.getenv("WEBAPP_URL", "")
+    
+    # Variables originales del .env (son los sufijos/rutas)
     OPDS_ROOT_START_SUFFIX: str = os.getenv("OPDS_ROOT_START", "")
     OPDS_ROOT_EVIL_SUFFIX: str = os.getenv("OPDS_ROOT_EVIL", "")
+    
     SECRET_SEED: str = os.getenv("SECRET_SEED", "")
 
     # Administradores (no tienen descargas ilimitadas aquí)
@@ -57,11 +65,14 @@ class BotConfig:
 
     @property
     def OPDS_ROOT_START(self) -> str:
-        return f"{self.BASE_URL}{self.OPDS_ROOT_START_SUFFIX}"
+        # Usa el servidor OPDS si está definido, sino usa BASE_URL (fallback)
+        base = self.OPDS_SERVER_URL if self.OPDS_SERVER_URL else self.BASE_URL
+        return f"{base}{self.OPDS_ROOT_START_SUFFIX}"
 
     @property
     def OPDS_ROOT_EVIL(self) -> str:
-        return f"{self.BASE_URL}{self.OPDS_ROOT_EVIL_SUFFIX}"
+        base = self.OPDS_SERVER_URL if self.OPDS_SERVER_URL else self.BASE_URL
+        return f"{base}{self.OPDS_ROOT_EVIL_SUFFIX}"
 
     def validate(self) -> Tuple[bool, List[str]]:
         errors: List[str] = []
@@ -69,6 +80,7 @@ class BotConfig:
             errors.append("TELEGRAM_TOKEN")
         if not self.BASE_URL:
             errors.append("BASE_URL")
+        # Validar que al menos tengamos los sufijos (usando los nombres del .env)
         if not self.OPDS_ROOT_START_SUFFIX:
             errors.append("OPDS_ROOT_START")
         if not self.OPDS_ROOT_EVIL_SUFFIX:

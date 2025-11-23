@@ -101,8 +101,12 @@ nano .env
 ```
 
     - `TELEGRAM_TOKEN`
-    - `OPDS_URL`
-    - `MAX_DOWNLOADS`, `WINDOW_HOURS`
+    - `BASE_URL` (URL del Bot)
+    - `OPDS_SERVER_URL` (URL del servidor OPDS, opcional)
+    - `WEBAPP_URL` (URL de la Mini App, opcional)
+    - `OPDS_ROOT_START` (Ruta/Sufijo OPDS inicial)
+    - `OPDS_ROOT_EVIL` (Ruta/Sufijo OPDS modo evil)
+    - `MAX_DOWNLOADS_PER_DAY`, `WINDOW_HOURS`
 
 
 ***
