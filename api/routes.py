@@ -10,10 +10,27 @@ router = APIRouter(prefix="/api")
 logger = logging.getLogger(__name__)
 
 @router.get("/feed")
-async def get_feed(url: Optional[str] = None):
+async def get_feed(url: Optional[str] = None, uid: Optional[int] = None):
     """
     Obtiene el feed OPDS. Si no se proporciona URL, usa el root por defecto.
+    Verifica permisos si se proporciona uid.
     """
+    logger.info(f"Feed request - UID: {uid}, URL: {url}")
+    
+    # Verificar permisos si hay UID
+    if uid:
+        allowed = (
+            uid in config.WHITELIST or 
+            uid in config.VIP_LIST or 
+            uid in config.PREMIUM_LIST or
+            uid in config.ADMIN_USERS
+        )
+        if not allowed:
+            raise HTTPException(
+                status_code=403, 
+                detail="⛔ Esta función solo está disponible para usuarios VIP, Premium o Patrocinadores por el momento."
+            )
+
     target_url = url if url else config.OPDS_ROOT_START
     try:
         feed = await parse_feed_from_url(target_url)

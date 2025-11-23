@@ -46,8 +46,11 @@ function App() {
     // Reset client-side page only if loading a new URL (not just searching)
     setCurrentPage(1);
     if (scrollContainerRef.current) scrollContainerRef.current.scrollTop = 0;
+
+    const uid = WebApp.initDataUnsafe?.user?.id;
+
     try {
-      const data = await fetchFeed(url);
+      const data = await fetchFeed(url, uid);
       if (data && data.entries) {
         // Auto-navegación: saltar automáticamente si hay elementos de navegación y estamos en niveles iniciales
         if (depth < 2 && data.entries.length > 0) {
@@ -92,7 +95,11 @@ function App() {
         setError('No se pudieron cargar los datos.');
       }
     } catch (err) {
-      setError('Error de conexión.');
+      if (err.message === 'ACCESS_DENIED') {
+        setError('ACCESS_DENIED');
+      } else {
+        setError('Error de conexión.');
+      }
     } finally {
       setLoading(false);
     }
@@ -267,6 +274,17 @@ function App() {
         {loading ? (
           <div className="flex justify-center items-center h-64">
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+          </div>
+        ) : error === 'ACCESS_DENIED' ? (
+          <div className="flex flex-col items-center justify-center h-full text-center p-6 space-y-4">
+            <div className="text-6xl">🚫</div>
+            <h2 className="text-xl font-bold text-white">Acceso Restringido</h2>
+            <p className="text-gray-300">
+              Esta función solo está disponible para usuarios <b>VIP</b>, <b>Premium</b> o <b>Patrocinadores</b>.
+            </p>
+            <p className="text-sm text-gray-500">
+              Contacta al administrador si crees que esto es un error.
+            </p>
           </div>
         ) : error ? (
           <div className="text-center text-red-400 p-4 bg-red-900/20 rounded-lg">
