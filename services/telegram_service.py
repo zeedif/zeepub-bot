@@ -345,3 +345,95 @@ async def descargar_epub_pendiente(update, context: ContextTypes.DEFAULT_TYPE, u
         reply_markup=InlineKeyboardMarkup(keyboard),
         message_thread_id=thread_id_origen
     )
+
+
+async def enviar_libro_directo(bot, user_id: int, title: str, download_url: str, cover_url: str = None):
+    """
+    Descarga y envía un libro directamente al usuario (para la Mini App).
+    Replica el formato del bot: Portada -> Sinopsis -> Archivo.
+    """
+    try:
+        # 1. Verificar límite
+        if not can_download(user_id):
+            await bot.send_message(chat_id=user_id, text="🚫 Has alcanzado tu límite de descargas por hoy.")
+            return False
+
+        # 2. Mensaje de preparación
+        prep_msg = await bot.send_message(chat_id=user_id, text=f"⏳ Procesando descarga de: {title}...")
+
+        # 3. Descargar EPUB
+        epub_bytes = await fetch_bytes(download_url, timeout=120)
+        if not epub_bytes:
+            await bot.send_message(chat_id=user_id, text="❌ Error al descargar el archivo desde la fuente.")
+            return False
+
+        # 4. Parsear metadatos del EPUB
+        meta = {"titulo": title, "epub_version": "2.0", "fecha_modificacion": "Desconocida"}
+        try:
+            opf_meta = await parse_opf_from_epub(epub_bytes)
+            if opf_meta:
+                meta.update(opf_meta)
+                if opf_meta.get("autores"):
+                    meta["autor"] = opf_meta["autores"][0]
+        except Exception as e:
+            logger.error(f"Error parsing OPF in direct download: {e}")
+
+        # 5. Enviar Portada
+        # Intentar extraer del EPUB primero
+        cover_bytes = extract_cover_from_epub(epub_bytes)
+        portada_data = cover_bytes if cover_bytes else (await fetch_bytes(cover_url) if cover_url else None)
+        
+        if portada_data:
+            mensaje_portada = formatear_mensaje_portada(meta)
+            await send_photo_bytes(bot, user_id, mensaje_portada, portada_data, filename="cover.jpg", parse_mode="HTML")
+            if not cover_bytes: # Si bajamos la portada de URL, limpiar si fuera archivo temporal (fetch_bytes devuelve bytes, asi que no aplica cleanup_tmp igual que archivo)
+                pass 
+
+        # 6. Enviar Sinopsis
+        sinopsis = meta.get("sinopsis")
+        if sinopsis:
+            sinopsis_esc = escapar_html(sinopsis)
+            texto = f"<b>Sinopsis:</b>\n<blockquote>{sinopsis_esc}</blockquote>\n#{generar_slug_from_meta(meta)}"
+            await bot.send_message(chat_id=user_id, text=texto, parse_mode="HTML")
+
+        # 7. Enviar Archivo EPUB
+        # Calcular tamaño
+        size_mb = len(epub_bytes) / (1024 * 1024)
+        version = meta.get("epub_version", "2.0")
+        fecha = meta.get("fecha_modificacion", "Desconocida")
+        titulo_vol = meta.get("titulo_volumen") or meta.get("titulo") or title
+        
+        caption = (
+            f"📂 <b>{titulo_vol}</b>\n"
+            f"ℹ️ Versión Epub: {version}\n"
+            f"📅 Actualizado: {fecha}\n"
+            f"📦 Tamaño: {size_mb:.2f} MB"
+        )
+        
+        slug = generar_slug_from_meta(meta)
+        if slug:
+            caption += f"\n#{slug}"
+
+        # Nombre de archivo limpio
+        fname = f"{title[:50]}.epub"
+        
+        await send_doc_bytes(bot, user_id, caption, epub_bytes, filename=fname, parse_mode="HTML")
+
+        # 8. Registrar descarga y notificar
+        record_download(user_id)
+        restantes = downloads_left(user_id)
+        if restantes != "ilimitadas":
+            await bot.send_message(chat_id=user_id, text=f"📥 Te quedan {restantes} descargas disponibles para hoy.")
+
+        # Limpieza
+        try:
+            await bot.delete_message(chat_id=user_id, message_id=prep_msg.message_id)
+        except:
+            pass
+            
+        return True
+
+    except Exception as e:
+        logger.error(f"Error en enviar_libro_directo: {e}", exc_info=True)
+        await bot.send_message(chat_id=user_id, text=f"❌ Ocurrió un error interno: {str(e)}")
+        return False

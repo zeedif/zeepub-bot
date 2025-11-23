@@ -48,6 +48,10 @@ class ZeePubBot:
         self.app.add_handler(CallbackQueryHandler(abrir_zeepubs, pattern="^abrir"))
         self.app.add_handler(CallbackQueryHandler(button_handler))
 
+        # Mini App handlers
+        from handlers.webapp_handlers import register_handlers as register_webapp_handlers
+        register_webapp_handlers(self.app)
+
         # Mensajes de texto
         self.app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_texto))
 
