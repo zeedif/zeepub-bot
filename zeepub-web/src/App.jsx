@@ -46,7 +46,8 @@ function App() {
 
     // Initial load
     const init = async () => {
-      const config = await fetchConfig();
+      const uid = WebApp.initDataUnsafe?.user?.id;
+      const config = await fetchConfig(uid);
       if (config && config.is_admin) {
         setIsAdmin(true);
         setAdminConfig(config);

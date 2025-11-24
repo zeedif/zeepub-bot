@@ -53,9 +53,11 @@ export const searchBooks = async (query) => {
         return null;
     }
 };
-export const fetchConfig = async () => {
+export const fetchConfig = async (uid = null) => {
     try {
-        const response = await fetch(`${API_BASE}/config`, {
+        const url = uid ? `${API_BASE}/config?uid=${uid}` : `${API_BASE}/config`;
+
+        const response = await fetch(url, {
             headers: getAuthHeaders()
         });
         if (!response.ok) throw new Error('Network response was not ok');
