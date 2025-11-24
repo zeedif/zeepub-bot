@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import WebApp from '@twa-dev/sdk';
-import { fetchFeed, searchBooks } from './api';
+import { fetchFeed, searchBooks, fetchConfig, downloadBook } from './api';
 import BookListItem from './components/BookListItem';
 import NavigationListItem from './components/NavigationListItem';
 import SearchBar from './components/SearchBar';
@@ -31,13 +31,34 @@ function App() {
   const [nextPageUrl, setNextPageUrl] = useState(null);
   const [prevPageUrl, setPrevPageUrl] = useState(null);
 
+  // Admin State
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [adminConfig, setAdminConfig] = useState(null);
+  const [adminMode, setAdminMode] = useState(false); // true = Evil/Admin Mode
+  const [selectedDestination, setSelectedDestination] = useState(null); // null = default (user)
+
   const scrollContainerRef = React.useRef(null);
 
   useEffect(() => {
     WebApp.ready();
     WebApp.expand();
     WebApp.BackButton.onClick(() => handleBack());
-    loadFeed();
+
+    // Initial load
+    const init = async () => {
+      const config = await fetchConfig();
+      if (config && config.is_admin) {
+        setIsAdmin(true);
+        setAdminConfig(config);
+        // Default destination to "me" (null in backend logic implies user_id, but we can be explicit if needed)
+        // config.destinations[0] should be "Aquí"
+        if (config.destinations && config.destinations.length > 0) {
+          setSelectedDestination(config.destinations[0].id);
+        }
+      }
+      loadFeed();
+    };
+    init();
   }, []);
 
   const loadFeed = async (url = null, depth = 0) => {
@@ -50,7 +71,13 @@ function App() {
     const uid = WebApp.initDataUnsafe?.user?.id;
 
     try {
-      const data = await fetchFeed(url, uid);
+      // Determine URL to load
+      let targetUrl = url;
+      if (!targetUrl && adminMode && adminConfig?.admin_root_url) {
+        targetUrl = adminConfig.admin_root_url;
+      }
+
+      const data = await fetchFeed(targetUrl, uid);
       if (data && data.entries) {
         // Auto-navegación: saltar automáticamente si hay elementos de navegación y estamos en niveles iniciales
         if (depth < 2 && data.entries.length > 0) {
@@ -170,49 +197,25 @@ function App() {
   };
 
   const handleDownload = async (book) => {
-    const downloadLink = book.links?.find(l =>
-      l.rel === 'http://opds-spec.org/acquisition' ||
-      l.type?.includes('epub')
-    );
-
-    if (!downloadLink || !downloadLink.href) {
-      WebApp.showAlert('No se encontró el enlace de descarga para este libro.');
-      return;
-    }
-
     // Mostrar confirmación antes de descargar
+    const destName = adminConfig?.destinations?.find(d => d.id === selectedDestination)?.name || 'tu chat';
+    const action = selectedDestination && selectedDestination !== 'me' ? `Publicar en ${destName}` : 'Descargar';
+
     WebApp.showConfirm(
-      `¿Deseas descargar "${book.title}"?`,
+      `¿Deseas ${action} "${book.title}"?`,
       async (confirmed) => {
         if (confirmed) {
           try {
-            // Mostrar mensaje de carga
-            WebApp.showAlert('Iniciando descarga...');
+            WebApp.showAlert(`Iniciando ${action.toLowerCase()}...`);
 
-            // Hacer llamada directa al backend para procesar la descarga
-            const headers = {
-              'Content-Type': 'application/json',
-            };
-            if (window.Telegram?.WebApp?.initData) {
-              headers['X-Telegram-Data'] = window.Telegram.WebApp.initData;
-            }
+            // Pass selectedDestination if it's not "me"
+            const target = selectedDestination === 'me' ? null : selectedDestination;
+            const success = await downloadBook(book, target);
 
-            const response = await fetch('/api/download', {
-              method: 'POST',
-              headers: headers,
-              body: JSON.stringify({
-                title: book.title,
-                author: book.author,
-                download_url: downloadLink.href,
-                cover_url: book.cover_url,
-                user_id: WebApp.initDataUnsafe?.user?.id
-              })
-            });
-
-            if (response.ok) {
-              WebApp.showAlert('✅ Descarga iniciada. Revisa el chat del bot.');
+            if (success) {
+              WebApp.showAlert('✅ Operación iniciada. Revisa el chat.');
             } else {
-              WebApp.showAlert('❌ Error al iniciar la descarga.');
+              WebApp.showAlert('❌ Error al iniciar.');
             }
           } catch (error) {
             console.error('Error downloading:', error);
@@ -273,6 +276,53 @@ function App() {
     <div className="flex flex-col h-screen bg-gray-900 text-white overflow-hidden">
       <header className="flex-none bg-blue-600 shadow-lg z-10 p-4">
         <SearchBar onSearch={debouncedSearch} />
+
+        {/* Admin Controls */}
+        {isAdmin && (
+          <div className="mt-3 p-2 bg-blue-800/50 rounded-lg text-sm flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-yellow-300">Modo Admin</span>
+              <button
+                onClick={() => {
+                  const newMode = !adminMode;
+                  setAdminMode(newMode);
+                  // Reload feed with new mode (resetting stack)
+                  setNavigationStack([]);
+                  WebApp.BackButton.hide();
+                  // We need to trigger loadFeed with null url but updated state
+                  // Since setState is async, we can't just call loadFeed() immediately with state reliance
+                  // So we pass the mode explicitly or use effect. 
+                  // Better: force reload with explicit param logic in loadFeed or just reload page?
+                  // Let's just call loadFeed(null) and let it read state? 
+                  // Actually loadFeed reads state 'adminMode' which might not be updated yet closure-wise.
+                  // Let's use a timeout or better, pass the mode to loadFeed if we refactor it.
+                  // For now, simple hack: reload after short delay or use a ref for mode.
+                  // Or just pass the URL directly:
+                  const url = newMode && adminConfig ? adminConfig.admin_root_url : null;
+                  loadFeed(url);
+                }}
+                className={`px-3 py-1 rounded-full text-xs font-bold transition-colors ${adminMode ? 'bg-red-500 text-white' : 'bg-gray-600 text-gray-300'}`}
+              >
+                {adminMode ? 'EVIL MODE ON' : 'Normal Mode'}
+              </button>
+            </div>
+
+            {adminMode && adminConfig?.destinations && (
+              <div className="flex items-center gap-2">
+                <span className="whitespace-nowrap">Destino:</span>
+                <select
+                  value={selectedDestination || 'me'}
+                  onChange={(e) => setSelectedDestination(e.target.value)}
+                  className="bg-blue-900 text-white border border-blue-700 rounded px-2 py-1 text-xs w-full outline-none focus:border-yellow-400"
+                >
+                  {adminConfig.destinations.map(d => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+        )}
       </header>
 
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-2 py-3">

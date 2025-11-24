@@ -162,6 +162,29 @@ async def proxy_image(rest_of_path: str, request: Request):
         logger.error(f"Error proxying image: {e}")
         raise HTTPException(status_code=404, detail="Image not found")
 
+@router.get("/config")
+async def get_config(current_uid: int = Depends(get_current_user)):
+    """
+    Retorna configuración inicial para la Mini App, incluyendo permisos de admin.
+    """
+    is_admin = current_uid in config.ADMIN_USERS
+    
+    response = {
+        "is_admin": is_admin,
+        "admin_root_url": config.OPDS_ROOT_EVIL if is_admin else None,
+        "destinations": []
+    }
+    
+    if is_admin:
+        # Destinos predefinidos para admins
+        response["destinations"] = [
+            {"name": "📍 Aquí (Chat privado)", "id": "me"},
+            {"name": "📣 ZeePubs Channel", "id": "@ZeePubs"},
+            {"name": "🤖 ZeePub Bot Test", "id": "@ZeePubBotTest"}
+        ]
+        
+    return response
+
 @router.post("/download")
 async def download_book(
     request: Request,
@@ -175,6 +198,7 @@ async def download_book(
         title = data.get('title', 'Libro')
         download_url = data.get('download_url')
         cover_url = data.get('cover_url')
+        target_chat_id = data.get('target_chat_id')
         
         # Validar que el usuario autenticado coincida con el solicitado (o simplemente usar el autenticado)
         # Aquí forzamos el uso del usuario autenticado para mayor seguridad
@@ -193,7 +217,8 @@ async def download_book(
             user_id=user_id,
             title=title,
             download_url=download_url,
-            cover_url=cover_url
+            cover_url=cover_url,
+            target_chat_id=target_chat_id
         )
         
         if success:

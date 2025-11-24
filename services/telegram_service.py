@@ -347,7 +347,7 @@ async def descargar_epub_pendiente(update, context: ContextTypes.DEFAULT_TYPE, u
     )
 
 
-async def enviar_libro_directo(bot, user_id: int, title: str, download_url: str, cover_url: str = None):
+async def enviar_libro_directo(bot, user_id: int, title: str, download_url: str, cover_url: str = None, target_chat_id: int = None):
     """
     Descarga y envía un libro directamente al usuario (para la Mini App).
     Replica el formato del bot: Portada -> Sinopsis -> Archivo.
@@ -358,8 +358,11 @@ async def enviar_libro_directo(bot, user_id: int, title: str, download_url: str,
             await bot.send_message(chat_id=user_id, text="🚫 Has alcanzado tu límite de descargas por hoy.")
             return False
 
-        # 2. Mensaje de preparación
+        # 2. Mensaje de preparación (siempre al usuario que interactúa)
         prep_msg = await bot.send_message(chat_id=user_id, text=f"⏳ Procesando descarga de: {title}...")
+
+        # Destino final del libro
+        destino = target_chat_id if target_chat_id else user_id
 
         # 3. Descargar EPUB
         epub_bytes = await fetch_bytes(download_url, timeout=120)
@@ -385,7 +388,7 @@ async def enviar_libro_directo(bot, user_id: int, title: str, download_url: str,
         
         if portada_data:
             mensaje_portada = formatear_mensaje_portada(meta)
-            await send_photo_bytes(bot, user_id, mensaje_portada, portada_data, filename="cover.jpg", parse_mode="HTML")
+            await send_photo_bytes(bot, destino, mensaje_portada, portada_data, filename="cover.jpg", parse_mode="HTML")
             if not cover_bytes: # Si bajamos la portada de URL, limpiar si fuera archivo temporal (fetch_bytes devuelve bytes, asi que no aplica cleanup_tmp igual que archivo)
                 pass 
 
@@ -394,7 +397,7 @@ async def enviar_libro_directo(bot, user_id: int, title: str, download_url: str,
         if sinopsis:
             sinopsis_esc = escapar_html(sinopsis)
             texto = f"<b>Sinopsis:</b>\n<blockquote>{sinopsis_esc}</blockquote>\n#{generar_slug_from_meta(meta)}"
-            await bot.send_message(chat_id=user_id, text=texto, parse_mode="HTML")
+            await bot.send_message(chat_id=destino, text=texto, parse_mode="HTML")
 
         # 7. Enviar Archivo EPUB
         # Calcular tamaño
@@ -422,7 +425,7 @@ async def enviar_libro_directo(bot, user_id: int, title: str, download_url: str,
         # Nombre de archivo limpio
         fname = f"{title[:50]}.epub"
         
-        await send_doc_bytes(bot, user_id, caption, epub_bytes, filename=fname, parse_mode="HTML")
+        await send_doc_bytes(bot, destino, caption, epub_bytes, filename=fname, parse_mode="HTML")
 
         # 8. Registrar descarga y notificar
         record_download(user_id)

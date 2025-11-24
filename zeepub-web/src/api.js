@@ -53,3 +53,52 @@ export const searchBooks = async (query) => {
         return null;
     }
 };
+export const fetchConfig = async () => {
+    try {
+        const response = await fetch(`${API_BASE}/config`, {
+            headers: getAuthHeaders()
+        });
+        if (!response.ok) throw new Error('Network response was not ok');
+        return await response.json();
+    } catch (error) {
+        console.error('Error fetching config:', error);
+        return null;
+    }
+};
+
+export const downloadBook = async (book, targetChatId = null) => {
+    try {
+        const downloadLink = book.links?.find(l =>
+            l.rel === 'http://opds-spec.org/acquisition' ||
+            l.type?.includes('epub')
+        );
+
+        if (!downloadLink || !downloadLink.href) {
+            throw new Error('No download link found');
+        }
+
+        const body = {
+            title: book.title,
+            author: book.author,
+            download_url: downloadLink.href,
+            cover_url: book.cover_url,
+            user_id: window.Telegram?.WebApp?.initDataUnsafe?.user?.id
+        };
+
+        if (targetChatId) {
+            body.target_chat_id = targetChatId;
+        }
+
+        const response = await fetch(`${API_BASE}/download`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify(body)
+        });
+
+        if (!response.ok) throw new Error('Download failed');
+        return true;
+    } catch (error) {
+        console.error('Error downloading book:', error);
+        return false;
+    }
+};
