@@ -12,7 +12,13 @@ load_dotenv()
 @dataclass
 class BotConfig:
     TELEGRAM_TOKEN: str = os.getenv("TELEGRAM_TOKEN", "")
+    
+    # Dominio público (ej: zp-dev.sp-core.xyz o zeepub-bot.sp-core.xyz)
+    PUBLIC_DOMAIN: str = os.getenv("PUBLIC_DOMAIN", "")
+    
+    # Si no se define BASE_URL, se construye usando PUBLIC_DOMAIN
     BASE_URL: str = os.getenv("BASE_URL", "")
+    
     # URL base del servidor OPDS (ej: https://apps.tailfe99c.ts.net)
     OPDS_SERVER_URL: str = os.getenv("OPDS_SERVER_URL", "")
     
@@ -78,8 +84,17 @@ class BotConfig:
         errors: List[str] = []
         if not self.TELEGRAM_TOKEN:
             errors.append("TELEGRAM_TOKEN")
+            
+        # Lógica para URLs dinámicas
+        if not self.BASE_URL and self.PUBLIC_DOMAIN:
+            self.BASE_URL = f"https://{self.PUBLIC_DOMAIN}"
+            
+        if not self.WEBAPP_URL and self.PUBLIC_DOMAIN:
+            self.WEBAPP_URL = f"https://{self.PUBLIC_DOMAIN}"
+
         if not self.BASE_URL:
-            errors.append("BASE_URL")
+            errors.append("BASE_URL (or PUBLIC_DOMAIN)")
+            
         # Validar que al menos tengamos los sufijos (usando los nombres del .env)
         if not self.OPDS_ROOT_START_SUFFIX:
             errors.append("OPDS_ROOT_START")

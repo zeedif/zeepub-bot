@@ -6,8 +6,8 @@ services:
     build: .
     container_name: zeepub_bot
     restart: always
-    ports:
-      - "8000:8000"
+    # ports:
+    #   - "8000:8000"
     env_file:
       - .env
       # volumes:
@@ -20,3 +20,16 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: zeepub_tunnel
+    restart: always
+    command: tunnel run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+    depends_on:
+      - zeepub-bot
