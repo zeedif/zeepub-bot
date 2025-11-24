@@ -17,7 +17,10 @@ logger = logging.getLogger(__name__)
 
 async def set_destino(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
+    try:
+        await query.answer()
+    except Exception:
+        pass
     uid = update.effective_user.id
     _, destino = query.data.split("|", 1)
     st = state_manager.get_user_state(uid)
@@ -58,7 +61,10 @@ async def handle_manual_destino(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def buscar_epub(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
+    try:
+        await query.answer()
+    except Exception:
+        pass
     uid = update.effective_user.id
     st = state_manager.get_user_state(uid)
     chat = update.effective_chat
@@ -107,7 +113,10 @@ async def abrir_zeepubs(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
+    try:
+        await query.answer()
+    except Exception:
+        pass
     data = query.data
     uid = update.effective_user.id
     st = state_manager.get_user_state(uid)
@@ -291,7 +300,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Descargar EPUB pendiente
     if data == "descargar_epub":
-        await query.answer()
+        try:
+            await query.answer()
+        except Exception:
+            pass
         from services.telegram_service import descargar_epub_pendiente
         await descargar_epub_pendiente(update, context, uid)
         return
