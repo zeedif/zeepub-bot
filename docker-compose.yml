@@ -20,9 +20,6 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-    dns:
-      - 8.8.8.8
-      - 1.1.1.1
 
   tunnel:
     image: cloudflare/cloudflared:latest
