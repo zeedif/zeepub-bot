@@ -1,10 +1,10 @@
 version: '3.8'
 
 services:
-  zeepub-bot:
+  zeepubs_bot:
     # image: ghcr.io/devil1210/zeepub-bot:latest
     build: .
-    container_name: zeepub_bot
+    container_name: zeepubs_bot
     restart: always
     # ports:
     #   - "8000:8000"
@@ -29,4 +29,4 @@ services:
     environment:
       - TUNNEL_TOKEN=${TUNNEL_TOKEN}
     depends_on:
-      - zeepub-bot
+      - zeepubs_bot

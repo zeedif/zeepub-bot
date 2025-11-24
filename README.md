@@ -12,6 +12,9 @@
 - **Descarga Directa**: Envía archivos EPUB al chat con metadatos enriquecidos (portada, sinopsis, autor).
 - **Soporte para Grupos**: Funciona en grupos con topics/forums, respondiendo en el hilo correcto.
 - **Seguridad**: Validación criptográfica de `initData` para prevenir suplantación de identidad.
+- **Modo Administrador**:
+  - Acceso a bibliotecas restringidas (Evil Mode).
+  - Selector de destino para publicar libros en canales o chats específicos.
 - **Límites de Descarga**: Sistema de niveles (Lector, VIP, Premium) con cuotas configurables.
 - **Arquitectura Moderna**:
   - **Backend**: Python (FastAPI + python-telegram-bot) asíncrono.
@@ -79,6 +82,7 @@ nano .env
 ```env
 # Telegram
 TELEGRAM_TOKEN=123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11
+ADMIN_USERS=123456789,987654321 # IDs de admins separados por coma
 
 # Cloudflare Tunnel
 TUNNEL_TOKEN=eyJhIjoi... (Token obtenido del panel Zero Trust)
@@ -87,6 +91,7 @@ PUBLIC_DOMAIN=tu-dominio.com (Ej: bot.midominio.com)
 # OPDS
 OPDS_SERVER_URL=https://tu-biblioteca-opds.com
 OPDS_ROOT_START=/opds-root
+OPDS_ROOT_EVIL=/opds-evil # Ruta para administradores
 
 # Configuración
 LOG_LEVEL=INFO
@@ -111,7 +116,7 @@ En tu panel de [Cloudflare Zero Trust](https://one.dash.cloudflare.com/):
 2.  Selecciona tu túnel y ve a **Public Hostname**.
 3.  Añade un nuevo hostname:
     *   **Public Hostname**: `tu-dominio.com` (El mismo que pusiste en `PUBLIC_DOMAIN`)
-    *   **Service**: `HTTP` -> `zeepub_bot:8000` (Nota: usa el nombre del servicio Docker, no localhost)
+    *   **Service**: `HTTP` -> `zeepubs_bot:8000` (Nota: usa el nombre del servicio Docker, no localhost)
 
 ***
 

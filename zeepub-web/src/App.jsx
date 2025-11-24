@@ -207,7 +207,8 @@ function App() {
       async (confirmed) => {
         if (confirmed) {
           try {
-            WebApp.showAlert(`Iniciando ${action.toLowerCase()}...`);
+            const actionMsg = action === 'Descargar' ? 'descarga' : action.toLowerCase();
+            WebApp.showAlert(`Iniciando ${actionMsg}...`);
 
             // Pass selectedDestination if it's not "me"
             const target = selectedDestination === 'me' ? null : selectedDestination;
