@@ -190,11 +190,16 @@ function App() {
             WebApp.showAlert('Iniciando descarga...');
 
             // Hacer llamada directa al backend para procesar la descarga
+            const headers = {
+              'Content-Type': 'application/json',
+            };
+            if (window.Telegram?.WebApp?.initData) {
+              headers['X-Telegram-Data'] = window.Telegram.WebApp.initData;
+            }
+
             const response = await fetch('/api/download', {
               method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
+              headers: headers,
               body: JSON.stringify({
                 title: book.title,
                 author: book.author,
