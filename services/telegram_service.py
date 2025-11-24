@@ -398,7 +398,12 @@ async def enviar_libro_directo(bot, user_id: int, title: str, download_url: str,
 
         # 7. Enviar Archivo EPUB
         # Calcular tamaño
-        size_mb = len(epub_bytes) / (1024 * 1024)
+        if isinstance(epub_bytes, (bytes, bytearray)):
+            size_mb = len(epub_bytes) / (1024 * 1024)
+        elif isinstance(epub_bytes, str) and os.path.exists(epub_bytes):
+            size_mb = os.path.getsize(epub_bytes) / (1024 * 1024)
+        else:
+            size_mb = 0.0
         version = meta.get("epub_version", "2.0")
         fecha = meta.get("fecha_modificacion", "Desconocida")
         titulo_vol = meta.get("titulo_volumen") or meta.get("titulo") or title

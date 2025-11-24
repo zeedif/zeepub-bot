@@ -253,14 +253,17 @@ async def parse_opf_from_epub(data_or_path: Union[bytes, str]) -> Dict[str, Any]
     except Exception:
         return None
 
-def extract_cover_from_epub(data: bytes) -> Optional[bytes]:
+def extract_cover_from_epub(data_or_path: Union[bytes, str]) -> Optional[bytes]:
     """
     Extrae y devuelve los bytes de la portada embebida en el EPUB,
     buscando primero <meta property="cover"> y luego cualquier
     image/* con 'cover' en id o href. Retorna None si no la halla.
     """
     try:
-        zf = zipfile.ZipFile(io.BytesIO(data))
+        if isinstance(data_or_path, (bytes, bytearray)):
+            zf = zipfile.ZipFile(io.BytesIO(data_or_path))
+        else:
+            zf = zipfile.ZipFile(data_or_path)
         namelist = zf.namelist()
         lower_map = {n.lower(): n for n in namelist}
 
