@@ -74,7 +74,7 @@ async def fetch_bytes(url: str, session: aiohttp.ClientSession = None, timeout: 
             logger.debug("fetch_bytes devolvió bytes en memoria (%d bytes)", length)
             return data
     except Exception as e:
-        logger.debug("Error fetch_bytes %s: %s", url, e)
+        logger.error("Error fetch_bytes %s: %s", url, e)
         return None
 
 async def parse_feed_from_url(url: str):
