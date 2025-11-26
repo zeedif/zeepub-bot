@@ -117,6 +117,15 @@ async def publicar_libro(update, context: ContextTypes.DEFAULT_TYPE,
                 except Exception as e:
                     logger.debug(f"publicar_libro: fallo parse OPF: {e}")
                 
+                # Extraer título interno y nombre de archivo para nuevo formato
+                try:
+                    from services.epub_service import extract_internal_title
+                    internal_title = extract_internal_title(epub_downloaded)
+                    if internal_title:
+                        meta["internal_title"] = internal_title
+                except Exception as e:
+                    logger.debug(f"publicar_libro: fallo extra metadata: {e}")
+                
                 # Guardar EPUB y metadatos para envío posterior
                 user_state["epub_buffer"] = epub_downloaded
                 user_state["epub_url"] = epub_url
@@ -387,6 +396,15 @@ async def enviar_libro_directo(bot, user_id: int, title: str, download_url: str,
                     meta["autor"] = opf_meta["autores"][0]
         except Exception as e:
             logger.error(f"Error parsing OPF in direct download: {e}")
+
+        # Extraer título interno y nombre de archivo para nuevo formato
+        try:
+            from services.epub_service import extract_internal_title
+            internal_title = extract_internal_title(epub_bytes)
+            if internal_title:
+                meta["internal_title"] = internal_title
+        except Exception as e:
+            logger.debug(f"enviar_libro_directo: fallo extra metadata: {e}")
 
         # 5. Enviar Portada
         # Intentar extraer del EPUB primero

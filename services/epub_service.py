@@ -6,6 +6,45 @@ import zipfile
 import xml.etree.ElementTree as ET
 from typing import Optional, Dict, Any, Union
 from utils.helpers import limpiar_html_basico
+import re
+
+def extract_internal_title(data_or_path: Union[bytes, str]) -> Optional[str]:
+    """
+    Busca un título interno en archivos 'title' o 'titulo' dentro del EPUB.
+    Busca específicamente <span class="grande" epub:type="title">...</span>
+    """
+    try:
+        if isinstance(data_or_path, (bytes, bytearray)):
+            zf = zipfile.ZipFile(io.BytesIO(data_or_path))
+        else:
+            zf = zipfile.ZipFile(data_or_path)
+        
+        # Buscar archivos candidatos
+        candidates = [n for n in zf.namelist() if "title" in n.lower() or "titulo" in n.lower()]
+        
+        # Regex para el tag específico
+        # <span class="grande" epub:type="title">TEXTO</span>
+        pattern = re.compile(r'<span[^>]*class="grande"[^>]*epub:type="title"[^>]*>(.*?)</span>', re.IGNORECASE | re.DOTALL)
+        # Fallback regex with swapped attributes if needed, or just look for epub:type="title" inside span
+        pattern_loose = re.compile(r'<span[^>]*epub:type="title"[^>]*>(.*?)</span>', re.IGNORECASE | re.DOTALL)
+
+        for name in candidates:
+            try:
+                content = zf.read(name).decode("utf-8", errors="ignore")
+                match = pattern.search(content)
+                if not match:
+                    match = pattern_loose.search(content)
+                
+                if match:
+                    # Limpiar tags html internos si los hubiera
+                    text = re.sub(r'<[^>]+>', '', match.group(1)).strip()
+                    return text
+            except Exception:
+                continue
+                
+        return None
+    except Exception:
+        return None
 
 async def parse_opf_from_epub(data_or_path: Union[bytes, str]) -> Dict[str, Any]:
     """

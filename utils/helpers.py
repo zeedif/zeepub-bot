@@ -150,9 +150,62 @@ def generar_slug_from_meta(meta: dict) -> str:
     slug = base_titulo.replace(" ", "_")
     return slug
 
+def parse_title_string(title_str: str) -> tuple[str, str]:
+    """
+    Parsea un título completo (ej: "Serie - Volumen 01 [Tag]")
+    Retorna (titulo_serie, volumen).
+    """
+    if not title_str:
+        return "", ""
+        
+    # Regex para encontrar "Volumen XX"
+    vol_match = re.search(r'(Volumen\s+\d+(\.\d+)?)', title_str, re.IGNORECASE)
+    volume = vol_match.group(1) if vol_match else ""
+    
+    # Serie: Todo antes de " - Volumen" o eliminar volumen y tags
+    series = title_str
+    if " - " in title_str:
+        parts = title_str.split(" - ")
+        # Asumimos que la primera parte es la serie si hay separador claro
+        series = parts[0].strip()
+    else:
+        # Fallback: eliminar volumen y tags
+        if volume:
+            series = series.replace(volume, "")
+        series = re.sub(r'\[.*?\]', '', series).strip()
+        
+    return series.strip(), volume.strip()
+
 def formatear_mensaje_portada(meta: dict) -> str:
     slug = generar_slug_from_meta(meta)
-    titulo_vol = meta.get("titulo_volumen") or ""
+    lines = []
+    
+    # Nueva lógica si existen los campos específicos
+    internal_title = meta.get("internal_title")
+    collection_title = meta.get("titulo_serie")
+    
+    if internal_title and collection_title:
+        full_title = meta.get("titulo_volumen") or ""
+        series, volume = parse_title_string(full_title)
+        
+        # Si no se encontró volumen, usar el título completo como serie (o dejar vacío volumen)
+        if not series:
+            series = full_title
+            
+        lines.extend([
+            f"Epub de: {series} ║ {collection_title} ║ {internal_title}",
+            volume,
+            f"#{slug}" if slug else ""
+        ])
+    else:
+        # Lógica antigua (fallback)
+        titulo_vol = meta.get("titulo_volumen") or ""
+        lines.extend([
+            titulo_vol,
+            f"#{slug}" if slug else ""
+        ])
+
+    # Common metadata fields
     categoria = meta.get("categoria") or "Desconocida"
     generos = ", ".join(meta.get("generos") or []) or "Desconocido"
     demografia = ", ".join(meta.get("demografia") or []) or "Desconocida"
@@ -163,6 +216,7 @@ def formatear_mensaje_portada(meta: dict) -> str:
         maqu_line = "<b>Maquetado por:</b> #ZeePub"
     else:
         maqu_line = "<b>Maquetado por:</b> " + " ".join(f"#{m.replace(' ', '')}" for m in maqus)
+    
     traduccion_parts = []
     if meta.get("traductor"):
         traduccion_parts.append(meta["traductor"])
@@ -173,23 +227,24 @@ def formatear_mensaje_portada(meta: dict) -> str:
     traduccion_line = ""
     if traduccion_parts:
         traduccion_line = "<b>Traducción:</b> " + " − ".join(traduccion_parts)
-    lines = [
-        titulo_vol,
-        f"#{slug}" if slug else "",
-        "",  # línea en blanco garantizada
+
+    lines.append("") # Empty line separator
+    lines.extend([
         maqu_line,
         f"<b>Categoría:</b> {categoria}",
         f"<b>Demografía:</b> {demografia}",
         f"<b>Géneros:</b> {generos}",
         f"<b>Autor:</b> {autor}",
         f"<b>Ilustrador:</b> {ilustrador}",
-    ]
+    ])
+
     if meta.get("fecha_publicacion"):
         lines.append(f"<b>Publicado:</b> {meta['fecha_publicacion']}")
     if traduccion_line:
         lines.append(traduccion_line)
-    # No filtramos cadenas vacías para preservar los saltos de línea
-    return "\n".join(lines)
+
+    # Filter out None but keep empty strings (though lines shouldn't have None)
+    return "\n".join(line for line in lines if line is not None)
 
 def escapar_html(texto: str) -> str:
     return html.escape(texto) if texto else ""
