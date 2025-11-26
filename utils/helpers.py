@@ -176,13 +176,17 @@ def parse_title_string(title_str: str) -> tuple[str, str]:
         
     return series.strip(), volume.strip()
 
-def formatear_mensaje_portada(meta: dict) -> str:
+def formatear_mensaje_portada(meta: dict, include_slug: bool = True) -> str:
     slug = generar_slug_from_meta(meta)
     lines = []
     
     # Nueva lógica si existen los campos específicos
     internal_title = meta.get("internal_title")
     collection_title = meta.get("titulo_serie")
+    
+    # Si no hay titulo_serie pero sí filename_title, usar filename_title como collection
+    if not collection_title and meta.get("filename_title"):
+        collection_title = meta.get("filename_title")
     
     # Limpiar collection_title: remover [...] y su contenido
     if collection_title:
@@ -199,14 +203,14 @@ def formatear_mensaje_portada(meta: dict) -> str:
         lines.extend([
             f"Epub de: {series} ║ {collection_title} ║ {internal_title}",
             volume,
-            f"#{slug}" if slug else ""
+            f"#{slug}" if (slug and include_slug) else ""
         ])
     else:
         # Lógica antigua (fallback)
         titulo_vol = meta.get("titulo_volumen") or ""
         lines.extend([
             titulo_vol,
-            f"#{slug}" if slug else ""
+            f"#{slug}" if (slug and include_slug) else ""
         ])
 
     # Common metadata fields
@@ -249,6 +253,41 @@ def formatear_mensaje_portada(meta: dict) -> str:
 
     # Filter out None but keep empty strings (though lines shouldn't have None)
     return "\n".join(line for line in lines if line is not None)
+
+def formatear_titulo_fb(meta: dict) -> str:
+    """
+    Genera el título formateado para Facebook (sin slug, sin hashtags).
+    Replica la lógica de formatear_mensaje_portada para el título.
+    """
+    lines = []
+    
+    # Nueva lógica si existen los campos específicos
+    internal_title = meta.get("internal_title")
+    collection_title = meta.get("titulo_serie")
+    
+    # Limpiar collection_title: remover [...] y su contenido
+    if collection_title:
+        collection_title = re.sub(r'\[.*?\]', '', collection_title).strip()
+    
+    if internal_title and collection_title:
+        full_title = meta.get("titulo_volumen") or ""
+        series, volume = parse_title_string(full_title)
+        
+        # Si no se encontró volumen, usar el título completo como serie (o dejar vacío volumen)
+        if not series:
+            series = full_title
+            
+        lines.extend([
+            f"Epub de: {series} ║ {collection_title} ║ {internal_title}",
+            volume
+        ])
+    else:
+        # Lógica antigua (fallback)
+        titulo_vol = meta.get("titulo_volumen") or ""
+        lines.append(titulo_vol)
+    
+    return "\n".join(line for line in lines if line).strip()
+
 
 def escapar_html(texto: str) -> str:
     return html.escape(texto) if texto else ""

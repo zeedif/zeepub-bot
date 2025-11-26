@@ -11,7 +11,8 @@ import re
 def extract_internal_title(data_or_path: Union[bytes, str]) -> Optional[str]:
     """
     Busca un título interno en archivos 'title' o 'titulo' dentro del EPUB.
-    Busca específicamente <span class="grande" epub:type="title">...</span>
+    Prioriza <... epub:type="fulltitle"> y combina title/subtitle.
+    Fallback a <span class="grande" epub:type="title">.
     """
     try:
         if isinstance(data_or_path, (bytes, bytearray)):
@@ -22,21 +23,52 @@ def extract_internal_title(data_or_path: Union[bytes, str]) -> Optional[str]:
         # Buscar archivos candidatos
         candidates = [n for n in zf.namelist() if "title" in n.lower() or "titulo" in n.lower()]
         
-        # Regex para el tag específico
-        # <span class="grande" epub:type="title">TEXTO</span>
-        pattern = re.compile(r'<span[^>]*class="grande"[^>]*epub:type="title"[^>]*>(.*?)</span>', re.IGNORECASE | re.DOTALL)
-        # Fallback regex with swapped attributes if needed, or just look for epub:type="title" inside span
+        # Regex para fulltitle: <tag ... epub:type="fulltitle" ...> content </tag>
+        fulltitle_pattern = re.compile(r'<(\w+)[^>]*epub:type="fulltitle"[^>]*>(.*?)</\1>', re.IGNORECASE | re.DOTALL)
+        
+        # Regex para componentes internos
+        title_pat = re.compile(r'epub:type="title"[^>]*>(.*?)<', re.IGNORECASE | re.DOTALL)
+        subtitle_pat = re.compile(r'epub:type="subtitle"[^>]*>(.*?)<', re.IGNORECASE | re.DOTALL)
+
+        # Regex legacy/fallback
+        pattern_legacy = re.compile(r'<span[^>]*class="grande"[^>]*epub:type="title"[^>]*>(.*?)</span>', re.IGNORECASE | re.DOTALL)
         pattern_loose = re.compile(r'<span[^>]*epub:type="title"[^>]*>(.*?)</span>', re.IGNORECASE | re.DOTALL)
 
         for name in candidates:
             try:
                 content = zf.read(name).decode("utf-8", errors="ignore")
-                match = pattern.search(content)
+                
+                # 1. Intentar fulltitle
+                match = fulltitle_pattern.search(content)
+                if match:
+                    inner_html = match.group(2)
+                    
+                    # Buscar title y subtitle dentro
+                    t_match = title_pat.search(inner_html)
+                    s_match = subtitle_pat.search(inner_html)
+                    
+                    if t_match and s_match:
+                        t_text = re.sub(r'<[^>]+>', '', t_match.group(1)).strip()
+                        s_text = re.sub(r'<[^>]+>', '', s_match.group(1)).strip()
+                        
+                        if t_text and s_text:
+                            # Agregar separador si no existe
+                            if not t_text.endswith(':') and not t_text.endswith('-'):
+                                return f"{t_text}: {s_text}"
+                            return f"{t_text} {s_text}"
+                    
+                    # Si no hay sub-tags claros, limpiar HTML (reemplazando br con espacio)
+                    clean = re.sub(r'<br\s*/?>', ' ', inner_html, flags=re.IGNORECASE)
+                    clean = re.sub(r'<[^>]+>', '', clean).strip()
+                    if clean:
+                        return clean
+
+                # 2. Fallback a lógica anterior
+                match = pattern_legacy.search(content)
                 if not match:
                     match = pattern_loose.search(content)
                 
                 if match:
-                    # Limpiar tags html internos si los hubiera
                     text = re.sub(r'<[^>]+>', '', match.group(1)).strip()
                     return text
             except Exception:

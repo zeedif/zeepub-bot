@@ -20,6 +20,23 @@
   - **Backend**: Python (FastAPI + python-telegram-bot) asíncrono.
   - **Frontend**: React (Vite) servido estáticamente.
   - **Infraestructura**: Docker + Cloudflare Tunnel (sin abrir puertos).
+  - **Base de Datos**: Soporte para PostgreSQL y SQLite con gestión de URLs acortadas.
+- **Comandos de Administración** (Solo Publishers):
+  - `/backup_db`: Genera y envía un backup completo de la base de datos PostgreSQL.
+  - `/restore_db`: Restaura la base de datos desde un archivo .sql.
+  - `/link_list [limit]`: Lista los links acortados más recientes (hasta 50).
+  - `/status_links`: Muestra el estado de los últimos 5 links con validación en tiempo real.
+  - `/purge_link <hash>`: Elimina un link acortado específico de la base de datos.
+- **Reportes Automáticos**:
+  - Sistema de reportes semanales automáticos cada lunes a las 9:00 AM con estadísticas de links (total, válidos, rotos, tasa de éxito).
+  - Los reportes se envían automáticamente a todos los publishers configurados.
+- **Formato Mejorado de EPUBs**:
+  - Extracción avanzada de metadatos con soporte para `epub:type="fulltitle"`.
+  - Formato de título completo: `Serie ║ Colección ║ Título Interno`.
+  - Preservación de puntuación y subtítulos multilinea.
+- **Integración con Facebook**:
+  - Preparación automatizada de posts con formato completo (título, metadata, sinopsis, info del archivo).
+  - Publicación directa en grupos de Facebook con un solo clic.
 
 ***
 
@@ -41,8 +58,15 @@
 ├── zeepub-web/                # Frontend React (Mini App)
 │   ├── src/                   # Código fuente React
 │   └── vite.config.js         # Configuración de build
+├── services/                  # Servicios del bot
+│   ├── telegram_service.py    # Lógica de envío de EPUBs y FB posts
+│   ├── epub_service.py        # Extracción de metadatos y títulos internos
+│   ├── opds_service.py        # Navegación de catálogos OPDS
+│   └── weekly_reports.py      # Sistema de reportes automáticos semanales
 ├── utils/                     # Utilidades
-│   └── security.py            # Validación de seguridad (HMAC)
+│   ├── security.py            # Validación de seguridad (HMAC)
+│   ├── url_cache.py           # Gestión de URLs acortadas (SQLite/PostgreSQL)
+│   └── url_validator.py       # Validación periódica de links
 └── tests/                     # Pruebas unitarias
 ```
 
@@ -96,6 +120,14 @@ OPDS_ROOT_EVIL=/opds-evil # Ruta para administradores
 # Configuración
 LOG_LEVEL=INFO
 MAX_DOWNLOADS_PER_DAY=5
+
+# Publishers (para comandos admin y reportes)
+FACEBOOK_PUBLISHERS=123456789,987654321
+FACEBOOK_PAGE_ACCESS_TOKEN=tu_token_de_fb
+FACEBOOK_GROUP_ID=tu_group_id
+
+# Dominio para links acortados
+DL_DOMAIN=https://tu-dominio.com
 ```
 
 ### 3. Desplegar con Docker

@@ -123,6 +123,11 @@ async def publicar_libro(update, context: ContextTypes.DEFAULT_TYPE,
                     internal_title = extract_internal_title(epub_downloaded)
                     if internal_title:
                         meta["internal_title"] = internal_title
+                    
+                    # Extraer filename_title del epub_url
+                    from urllib.parse import unquote, urlparse
+                    filename_title = unquote(urlparse(epub_url).path.split("/")[-1]).replace(".epub", "")
+                    meta["filename_title"] = filename_title
                 except Exception as e:
                     logger.debug(f"publicar_libro: fallo extra metadata: {e}")
                 
@@ -503,12 +508,10 @@ async def preparar_post_facebook(update, context: ContextTypes.DEFAULT_TYPE, uid
         return
     public_link = f"{dl_domain}/api/dl/{url_hash}"
     
-    # Formatear caption consolidado con toda la metadata
-    sinopsis = meta.get("sinopsis", "")
-    from utils.helpers import escapar_html
-    sinopsis_esc = escapar_html(sinopsis) if sinopsis else "Sin sinopsis disponible."
+    # Usar formatear_mensaje_portada para generar el caption completo (sin slug)
+    full_caption = formatear_mensaje_portada(meta, include_slug=False)
     
-    # Info del archivo
+    # Info adicional del archivo
     epub_buffer = user_state.get("epub_buffer")
     if epub_buffer:
         if isinstance(epub_buffer, (bytes, bytearray)):
@@ -522,65 +525,10 @@ async def preparar_post_facebook(update, context: ContextTypes.DEFAULT_TYPE, uid
     
     version = meta.get("epub_version", "2.0")
     fecha_mod = meta.get("fecha_modificacion", "Desconocida")
-    fecha_pub = meta.get("fecha_publicacion", "Desconocida")
     
-    # Construir secciones del mensaje
-    titulo_vol = meta.get("titulo_volumen") or titulo
-    
-    # Maquetadores con hashtags
-    maquetadores = meta.get("maquetadores", [])
-    maquet_str = ""
-    if maquetadores:
-        maquet_tags = " ".join([f"#{m.replace(' ', '')}" for m in maquetadores])
-        maquet_str = f"Maquetado por: {maquet_tags}\n"
-    
-    # Categoría
-    categoria = meta.get("categoria", "")
-    cat_str = f"Categoría: {categoria}\n" if categoria else ""
-    
-    # Demografía
-    demografia = meta.get("demografia", [])
-    demo_str = f"Demografía: {', '.join(demografia)}\n" if demografia else ""
-    
-    # Géneros
-    generos = meta.get("generos", [])
-    gen_str = f"Géneros: {', '.join(generos)}\n" if generos else ""
-    
-    # Autor(es)
-    autores = meta.get("autores", [])
-    autor_str = f"Autor: {', '.join(autores)}\n" if autores else ""
-    
-    # Ilustrador
-    ilustrador = meta.get("ilustrador")
-    ilus_str = f"Ilustrador: {ilustrador}\n" if ilustrador else ""
-    
-    # Publicado
-    pub_str = f"Publicado: {fecha_pub}\n" if fecha_pub != "Desconocida" else ""
-    
-    # Publisher/Traductor (si existe URL)
-    publisher = meta.get("publisher")
-    publisher_url = meta.get("publisher_url")
-    traductor = meta.get("traductor")
-    
-    trad_str = ""
-    if traductor and publisher_url:
-        trad_str = f"Traducción: {traductor} − {publisher} − {publisher_url}\n"
-    elif traductor:
-        trad_str = f"Traducción: {traductor}\n"
-    elif publisher:
-        trad_str = f"Publisher: {publisher}\n"
-
+    # Construir caption con el formato completo + info del archivo + link
     caption = (
-        f"{titulo_vol}\n\n"
-        f"{maquet_str}"
-        f"{cat_str}"
-        f"{demo_str}"
-        f"{gen_str}"
-        f"{autor_str}"
-        f"{ilus_str}"
-        f"{pub_str}"
-        f"{trad_str}\n"
-        f"Sinopsis:\n{sinopsis_esc}\n\n"
+        f"{full_caption}\n\n"
         f"ℹ️ Versión Epub: {version}\n"
         f"📅 Actualizado: {fecha_mod}\n"
         f"📦 Tamaño: {size_mb:.2f} MB\n\n"

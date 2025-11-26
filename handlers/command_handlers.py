@@ -31,6 +31,9 @@ class CommandHandlers:
         app.add_handler(CommandHandler("status_links", self.status_links))
         # Registrar /link_list
         app.add_handler(CommandHandler("link_list", self.link_list))
+        # Registrar /backup_db y /restore_db (publishers only)
+        app.add_handler(CommandHandler("backup_db", self.backup_db))
+        app.add_handler(CommandHandler("restore_db", self.restore_db))
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /start: inicializa estado; admin->evil, otros->normal."""
@@ -561,4 +564,178 @@ class CommandHandlers:
                 chat_id=update.effective_chat.id,
                 text=f"❌ Error al obtener listado de links: {str(e)}",
                 message_thread_id=thread_id
+            )
+
+    async def backup_db(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Realiza un backup de la base de datos (solo publishers)."""
+        uid = update.effective_user.id
+        if uid not in config.FACEBOOK_PUBLISHERS:
+            await update.message.reply_text("⛔ No tienes permisos para usar este comando.")
+            return
+
+        thread_id = get_thread_id(update)
+        msg = await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="⏳ Generando backup...",
+            message_thread_id=thread_id
+        )
+        
+        try:
+            import subprocess
+            import os
+            from datetime import datetime
+            from urllib.parse import urlparse
+            
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"backup_zeepub_{timestamp}.sql"
+            
+            # Obtener credenciales
+            pg_user = os.getenv("POSTGRES_USER")
+            pg_password = os.getenv("POSTGRES_PASSWORD")
+            pg_db = os.getenv("POSTGRES_DB")
+            pg_host = "db" # Default docker service name
+            
+            # Si no están en env, intentar parsear DATABASE_URL
+            if not pg_user and config.DATABASE_URL:
+                try:
+                    # postgresql+psycopg2://user:pass@host:port/db
+                    # Quitamos el driver para urlparse estándar
+                    clean_url = config.DATABASE_URL.replace("postgresql+psycopg2://", "postgres://")
+                    parsed = urlparse(clean_url)
+                    pg_user = parsed.username
+                    pg_password = parsed.password
+                    pg_host = parsed.hostname
+                    pg_db = parsed.path.lstrip('/')
+                except Exception as e:
+                    logger.error(f"Error parsing DATABASE_URL: {e}")
+
+            if not pg_user or not pg_password:
+                raise Exception("No se encontraron credenciales de base de datos.")
+
+            # Configurar entorno para pg_dump
+            env = os.environ.copy()
+            env["PGPASSWORD"] = pg_password
+            
+            # Comando pg_dump
+            cmd = [
+                "pg_dump",
+                "-h", pg_host,
+                "-U", pg_user,
+                "-d", pg_db,
+                "-f", filename
+            ]
+            
+            process = subprocess.run(cmd, env=env, capture_output=True, text=True)
+            
+            if process.returncode != 0:
+                raise Exception(f"pg_dump failed: {process.stderr}")
+                
+            # Enviar archivo
+            await context.bot.send_document(
+                chat_id=update.effective_chat.id,
+                document=open(filename, "rb"),
+                filename=filename,
+                caption=f"📦 Backup de base de datos\n📅 {timestamp}",
+                message_thread_id=thread_id
+            )
+            
+            # Limpiar
+            os.remove(filename)
+            await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=msg.message_id)
+            
+        except Exception as e:
+            logger.error(f"Error en backup_db: {e}", exc_info=True)
+            await context.bot.edit_message_text(
+                chat_id=update.effective_chat.id,
+                message_id=msg.message_id,
+                text=f"❌ Error al generar backup: {str(e)}"
+            )
+
+    async def restore_db(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Restaura la base de datos desde un archivo (solo publishers)."""
+        uid = update.effective_user.id
+        if uid not in config.FACEBOOK_PUBLISHERS:
+            await update.message.reply_text("⛔ No tienes permisos para usar este comando.")
+            return
+            
+        if not update.message.reply_to_message or not update.message.reply_to_message.document:
+            await update.message.reply_text("⚠️ Debes responder a un mensaje con el archivo .sql de backup para restaurarlo.")
+            return
+            
+        doc = update.message.reply_to_message.document
+        if not doc.file_name.endswith(".sql"):
+            await update.message.reply_text("⚠️ El archivo debe tener extensión .sql")
+            return
+            
+        thread_id = get_thread_id(update)
+        msg = await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="⏳ Descargando y restaurando backup... (Esto borrará los datos actuales)",
+            message_thread_id=thread_id
+        )
+        
+        try:
+            import subprocess
+            import os
+            from urllib.parse import urlparse
+            
+            # Descargar archivo
+            file = await doc.get_file()
+            filename = f"restore_{doc.file_name}"
+            await file.download_to_drive(filename)
+            
+            # Obtener credenciales (igual que backup)
+            pg_user = os.getenv("POSTGRES_USER")
+            pg_password = os.getenv("POSTGRES_PASSWORD")
+            pg_db = os.getenv("POSTGRES_DB")
+            pg_host = "db"
+            
+            if not pg_user and config.DATABASE_URL:
+                try:
+                    clean_url = config.DATABASE_URL.replace("postgresql+psycopg2://", "postgres://")
+                    parsed = urlparse(clean_url)
+                    pg_user = parsed.username
+                    pg_password = parsed.password
+                    pg_host = parsed.hostname
+                    pg_db = parsed.path.lstrip('/')
+                except Exception:
+                    pass
+
+            if not pg_user or not pg_password:
+                raise Exception("No se encontraron credenciales de base de datos.")
+            
+            # Configurar entorno
+            env = os.environ.copy()
+            env["PGPASSWORD"] = pg_password
+            
+            # Comando psql para restaurar
+            # Usamos -f para leer archivo
+            cmd = [
+                "psql",
+                "-h", pg_host,
+                "-U", pg_user,
+                "-d", pg_db,
+                "-f", filename
+            ]
+            
+            process = subprocess.run(cmd, env=env, capture_output=True, text=True)
+            
+            if process.returncode != 0:
+                raise Exception(f"Restore failed: {process.stderr}")
+                
+            await context.bot.edit_message_text(
+                chat_id=update.effective_chat.id,
+                message_id=msg.message_id,
+                text="✅ Base de datos restaurada exitosamente."
+            )
+            logger.info(f"Publisher {uid} restauró la base de datos desde {doc.file_name}")
+            
+            os.remove(filename)
+            
+        except Exception as e:
+            logger.error(f"Error en restore_db: {e}", exc_info=True)
+            await context.bot.edit_message_text(
+                chat_id=update.effective_chat.id,
+                message_id=msg.message_id,
+                text=f"❌ Error al restaurar backup: {str(e)}"
             )

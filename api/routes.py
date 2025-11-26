@@ -3,14 +3,16 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response, Depends,
 from typing import Optional, Dict, Any
 import aiohttp
 import httpx
+import os
 from config.config_settings import config
 from utils.http_client import parse_feed_from_url
 from utils.helpers import build_search_url
 from utils.security import validate_telegram_data
 from utils.http_client import fetch_bytes
 from services.epub_service import parse_opf_from_epub, extract_cover_from_epub
-from utils.helpers import generar_slug_from_meta, formatear_mensaje_portada
+from utils.helpers import generar_slug_from_meta, formatear_mensaje_portada, formatear_titulo_fb
 import logging
+import re
 
 router = APIRouter(prefix="/api")
 logger = logging.getLogger(__name__)
@@ -211,26 +213,31 @@ async def public_download(
         if not data:
             raise HTTPException(status_code=404, detail="Could not fetch file")
 
+        from fastapi.responses import StreamingResponse
+
         # Determinar si es archivo o bytes
         if isinstance(data, str) and os.path.exists(data):
             # Es un archivo temporal
             def iterfile():
-                with open(data, mode="rb") as file_like:
-                    yield from file_like
-                # Intentar borrar después (esto es tricky en generadores, 
-                # idealmente usar BackgroundTasks para cleanup, pero por simplicidad...)
                 try:
-                    os.unlink(data)
-                except:
-                    pass
+                    with open(data, mode="rb") as file_like:
+                        yield from file_like
+                finally:
+                    # Intentar borrar después
+                    try:
+                        os.unlink(data)
+                    except:
+                        pass
 
-            return Response(
+            return StreamingResponse(
                 content=iterfile(),
                 media_type="application/epub+zip",
                 headers={"Content-Disposition": f'attachment; filename="{title}.epub"'}
             )
         else:
             # Son bytes en memoria
+            # StreamingResponse espera un iterador o bytes-like object?
+            # Response normal funciona para bytes.
             return Response(
                 content=data,
                 media_type="application/epub+zip",
@@ -268,7 +275,7 @@ async def prepare_facebook_post(
 
         # Construir link público acortado con SHA256
         from utils.url_cache import create_short_url
-        from urllib.parse import quote
+        from urllib.parse import quote, unquote, urlparse
         
         dl_domain = config.DL_DOMAIN.rstrip('/')
         # Asegurar esquema
@@ -279,15 +286,46 @@ async def prepare_facebook_post(
         url_hash = create_short_url(download_url)
         public_link = f"{dl_domain}/api/dl/{url_hash}"
         
-        # Simular metadatos básicos (podríamos descargar el epub para ser más precisos, 
-        # pero para la preview rápida usamos lo que tenemos o hacemos un fetch rápido si es crítico)
-        # Por rapidez, usamos datos básicos y el link.
+        # Intentar obtener metadatos completos del EPUB para el título
+        header_title = f"📚 <b>{title}</b>" # Fallback
+        
+        try:
+            # Descargar primeros bytes o todo para parsear
+            epub_bytes = await fetch_bytes(download_url, timeout=60)
+            if epub_bytes:
+                meta = {"titulo": title, "epub_version": "2.0", "fecha_modificacion": "Desconocida"}
+                
+                # Parsear OPF
+                opf_meta = await parse_opf_from_epub(epub_bytes)
+                if opf_meta:
+                    meta.update(opf_meta)
+                
+                # Extraer título interno
+                internal_title = extract_internal_title(epub_bytes)
+                if internal_title:
+                    meta["internal_title"] = internal_title
+                
+                # Extraer filename title
+                filename_title = unquote(urlparse(download_url).path.split("/")[-1]).replace(".epub", "")
+                meta["filename_title"] = filename_title
+                
+                # Debug logging
+                logger.info(f"FB Post Meta - internal_title: {meta.get('internal_title')}, collection_title: {meta.get('titulo_serie')}, titulo_volumen: {meta.get('titulo_volumen')}")
+                
+                # Generar caption completo (sin slug para FB)
+                full_caption = formatear_mensaje_portada(meta, include_slug=False)
+                
+                # Usar el caption completo
+                caption_base = full_caption
+                
+        except Exception as e:
+            logger.warning(f"Could not fetch/parse EPUB for FB post: {e}")
+            caption_base = f"📚 <b>{title}</b>" # Fallback
         
         caption = (
-            f"📚 <b>{title}</b>\n\n"
+            f"{caption_base}\n\n"
             f"⬇️ <b>Descarga directa:</b>\n"
-            f"{public_link}\n\n"
-            f"#Libros #Epub #Lectura"
+            f"{public_link}"
         )
         
         return {
