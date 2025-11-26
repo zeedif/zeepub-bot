@@ -1,6 +1,7 @@
 # handlers/command_handlers.py
 
 import logging
+import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, CommandHandler
 from core.state_manager import state_manager

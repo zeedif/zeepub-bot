@@ -509,7 +509,31 @@ async def preparar_post_facebook(update, context: ContextTypes.DEFAULT_TYPE, uid
     public_link = f"{dl_domain}/api/dl/{url_hash}"
     
     # Usar formatear_mensaje_portada para generar el caption completo (sin slug)
-    full_caption = formatear_mensaje_portada(meta, include_slug=False)
+    full_caption = formatear_mensaje_portada(meta, include_slug=False).rstrip()
+
+    # Añadir sinopsis (si está disponible) — la vista previa y la publicación deben
+    # mostrar la sinopsis completa pero sin el slug/hashtag.
+    sinopsis = meta.get("sinopsis")
+    # Intentar obtener sinopsis desde OPDS si no existe en meta
+    if not sinopsis:
+        series_id = user_state.get("series_id")
+        volume_id = user_state.get("volume_id")
+        if volume_id and series_id:
+            try:
+                sinopsis = await obtener_sinopsis_opds_volumen(series_id, volume_id)
+            except Exception:
+                sinopsis = None
+        if not sinopsis and series_id:
+            try:
+                sinopsis = await obtener_sinopsis_opds(series_id)
+            except Exception:
+                sinopsis = None
+
+    if sinopsis:
+        # Mantener HTML seguro para la vista previa pero sin slug
+        sinopsis_esc = escapar_html(sinopsis)
+        # asegurarnos de no dejar saltos múltiples: strip final y añadir exactamente 1 separador
+        full_caption = f"{full_caption}\n\n<b>Sinopsis:</b>\n{sinopsis_esc}".rstrip()
     
     # Info adicional del archivo
     epub_buffer = user_state.get("epub_buffer")
@@ -527,6 +551,9 @@ async def preparar_post_facebook(update, context: ContextTypes.DEFAULT_TYPE, uid
     fecha_mod = meta.get("fecha_modificacion", "Desconocida")
     
     # Construir caption con el formato completo + info del archivo + link
+    # Asegurar único separador antes de los metadatos del archivo
+    full_caption = full_caption.rstrip()
+
     caption = (
         f"{full_caption}\n\n"
         f"ℹ️ Versión Epub: {version}\n"

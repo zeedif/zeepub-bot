@@ -195,23 +195,26 @@ def formatear_mensaje_portada(meta: dict, include_slug: bool = True) -> str:
     if internal_title and collection_title:
         full_title = meta.get("titulo_volumen") or ""
         series, volume = parse_title_string(full_title)
-        
+
         # Si no se encontró volumen, usar el título completo como serie (o dejar vacío volumen)
         if not series:
             series = full_title
-            
-        lines.extend([
-            f"Epub de: {series} ║ {collection_title} ║ {internal_title}",
-            volume,
-            f"#{slug}" if (slug and include_slug) else ""
-        ])
+
+        # Colocar el slug en la misma línea del título (si se solicita)
+        titulo_line = f"Epub de: {series} ║ {collection_title} ║ {internal_title}"
+        if slug and include_slug:
+            titulo_line = f"{titulo_line} #{slug}"
+
+        lines.append(titulo_line)
+        if volume:
+            lines.append(volume)
     else:
-        # Lógica antigua (fallback)
+        # Lógica antigua (fallback) — poner slug en la misma línea que el título
         titulo_vol = meta.get("titulo_volumen") or ""
-        lines.extend([
-            titulo_vol,
-            f"#{slug}" if (slug and include_slug) else ""
-        ])
+        if slug and include_slug:
+            lines.append(f"{titulo_vol} #{slug}")
+        else:
+            lines.append(titulo_vol)
 
     # Common metadata fields
     categoria = meta.get("categoria") or "Desconocida"
@@ -236,7 +239,8 @@ def formatear_mensaje_portada(meta: dict, include_slug: bool = True) -> str:
     if traduccion_parts:
         traduccion_line = "<b>Traducción:</b> " + " − ".join(traduccion_parts)
 
-    lines.append("") # Empty line separator
+    # Un único separador vacío entre encabezado y metadatos
+    lines.append("")
     lines.extend([
         maqu_line,
         f"<b>Categoría:</b> {categoria}",
