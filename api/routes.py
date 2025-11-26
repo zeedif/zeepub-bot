@@ -217,20 +217,24 @@ async def public_download(
 
         # Determinar si es archivo o bytes
         if isinstance(data, str) and os.path.exists(data):
-            # Es un archivo temporal
-            def iterfile():
+            # Es un archivo temporal - usar aiofiles para streaming async
+            import aiofiles
+
+            async def iterfile_async():
                 try:
-                    with open(data, mode="rb") as file_like:
-                        yield from file_like
+                    async with aiofiles.open(data, mode='rb') as f:
+                        chunk = await f.read(64 * 1024)
+                        while chunk:
+                            yield chunk
+                            chunk = await f.read(64 * 1024)
                 finally:
-                    # Intentar borrar después
                     try:
                         os.unlink(data)
                     except Exception as e:
                         logger.debug("Could not remove temp file from streaming proxy: %s", e)
 
             return StreamingResponse(
-                content=iterfile(),
+                content=iterfile_async(),
                 media_type="application/epub+zip",
                 headers={"Content-Disposition": f'attachment; filename="{title}.epub"'}
             )

@@ -18,7 +18,12 @@ async def obtener_sinopsis_opds(series_id: str) -> Optional[str]:
     if not data:
         return None
     try:
-        content = data if isinstance(data, (bytes, bytearray)) else open(data, "rb").read()
+        if isinstance(data, (bytes, bytearray)):
+            content = data
+        else:
+            import aiofiles
+            async with aiofiles.open(data, 'rb') as f:
+                content = await f.read()
         root = ET.fromstring(content)
         ns = {"atom": "http://www.w3.org/2005/Atom"}
         summary = root.find(".//atom:summary", ns)
@@ -39,7 +44,12 @@ async def obtener_sinopsis_opds_volumen(series_id: str, volume_id: str) -> Optio
     if not data:
         return None
     try:
-        content = data if isinstance(data, (bytes, bytearray)) else open(data, "rb").read()
+        if isinstance(data, (bytes, bytearray)):
+            content = data
+        else:
+            import aiofiles
+            async with aiofiles.open(data, 'rb') as f:
+                content = await f.read()
         root = ET.fromstring(content)
         ns = {"atom": "http://www.w3.org/2005/Atom"}
         for entry in root.findall("atom:entry", ns):
@@ -76,7 +86,12 @@ async def obtener_metadatos_opds(series_id: str, volume_id: str) -> Dict[str, An
     if not data:
         return datos
     try:
-        content = data if isinstance(data, (bytes, bytearray)) else open(data, "rb").read()
+        if isinstance(data, (bytes, bytearray)):
+            content = data
+        else:
+            import aiofiles
+            async with aiofiles.open(data, 'rb') as f:
+                content = await f.read()
         root = ET.fromstring(content)
         ns = {"atom": "http://www.w3.org/2005/Atom", "dc": "http://purl.org/dc/terms/"}
 

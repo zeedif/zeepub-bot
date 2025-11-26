@@ -213,6 +213,22 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logger.debug("Error al editar confirmación")
         return
 
+    # Publisher flow: publish target selection
+    if data.startswith("publish_target|"):
+        choice = data.split("|", 1)[1]
+        uid = update.effective_user.id
+        if choice == "facebook":
+            from services.telegram_service import _publish_choice_facebook
+            await _publish_choice_facebook(update, context, uid)
+        else:
+            from services.telegram_service import _publish_choice_telegram
+            await _publish_choice_telegram(update, context, uid)
+        try:
+            await query.answer()
+        except Exception as e:
+            logger.debug("Could not answer publish_target callback: %s", e)
+        return
+
     # Subir nivel (usar historial para ir al nivel anterior)
     if data == "subir_nivel":
         if "historial" not in st:

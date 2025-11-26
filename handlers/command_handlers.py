@@ -628,11 +628,17 @@ class CommandHandlers:
                 "-f", filename
             ]
             
+            # Use asyncio subprocess with timeout to avoid blocking and enable streaming
             import asyncio as _asyncio
-            process = await _asyncio.to_thread(subprocess.run, cmd, env=env, capture_output=True, text=True)
-            
-            if process.returncode != 0:
-                raise Exception(f"pg_dump failed: {process.stderr}")
+            proc = await _asyncio.create_subprocess_exec(*cmd, env=env, stdout=_asyncio.subprocess.PIPE, stderr=_asyncio.subprocess.PIPE)
+            try:
+                stdout, stderr = await _asyncio.wait_for(proc.communicate(), timeout=120)
+            except _asyncio.TimeoutError:
+                proc.kill()
+                await proc.wait()
+                raise Exception("pg_dump timed out")
+            if proc.returncode != 0:
+                raise Exception(f"pg_dump failed: {stderr.decode(errors='ignore')}")
                 
             # Enviar archivo (asegurar cierre del descriptor)
             with open(filename, "rb") as f:
@@ -726,11 +732,17 @@ class CommandHandlers:
                 "-f", filename
             ]
             
+            # Use asyncio subprocess to run psql non-blocking
             import asyncio as _asyncio
-            process = await _asyncio.to_thread(subprocess.run, cmd, env=env, capture_output=True, text=True)
-            
-            if process.returncode != 0:
-                raise Exception(f"Restore failed: {process.stderr}")
+            proc = await _asyncio.create_subprocess_exec(*cmd, env=env, stdout=_asyncio.subprocess.PIPE, stderr=_asyncio.subprocess.PIPE)
+            try:
+                stdout, stderr = await _asyncio.wait_for(proc.communicate(), timeout=180)
+            except _asyncio.TimeoutError:
+                proc.kill()
+                await proc.wait()
+                raise Exception("psql restore timed out")
+            if proc.returncode != 0:
+                raise Exception(f"Restore failed: {stderr.decode(errors='ignore')}")
                 
             await context.bot.edit_message_text(
                 chat_id=update.effective_chat.id,
@@ -784,11 +796,14 @@ class CommandHandlers:
                     rows = result.fetchall()
                     columns = result.keys()
                 
-                # Escribir CSV
-                with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
-                    writer = csv.writer(csvfile)
-                    writer.writerow(columns)  # Header
-                    writer.writerows(rows)
+                # Escribir CSV en thread pool para no bloquear el loop
+                import asyncio as _asyncio
+                def _write_csv(path, columns, rows):
+                    with open(path, 'w', newline='', encoding='utf-8') as csvfile:
+                        writer = csv.writer(csvfile)
+                        writer.writerow(columns)
+                        writer.writerows(rows)
+                await _asyncio.to_thread(_write_csv, filename, columns, rows)
                     
             else:
                 # SQLite
@@ -802,11 +817,14 @@ class CommandHandlers:
                 columns = [description[0] for description in cursor.description]
                 conn.close()
                 
-                # Escribir CSV
-                with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
-                    writer = csv.writer(csvfile)
-                    writer.writerow(columns)  # Header
-                    writer.writerows(rows)
+                # Escribir CSV en thread pool para no bloquear el loop
+                import asyncio as _asyncio
+                def _write_csv(path, columns, rows):
+                    with open(path, 'w', newline='', encoding='utf-8') as csvfile:
+                        writer = csv.writer(csvfile)
+                        writer.writerow(columns)
+                        writer.writerows(rows)
+                await _asyncio.to_thread(_write_csv, filename, columns, rows)
             
             # Enviar archivo cerrando descriptor cuando termine
             with open(filename, "rb") as f:
