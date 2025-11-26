@@ -20,7 +20,8 @@ import pytest
 client = TestClient(app)
 
 def test_read_root():
-    response = client.get("/")
+    # main app exposes health check on /api_health (SPA may serve /)
+    response = client.get("/api_health")
     assert response.status_code == 200
     assert response.json() == {"message": "ZeePub Bot API is running"}
 

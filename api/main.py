@@ -20,12 +20,18 @@ async def lifespan(app: FastAPI):
     logger.info("Iniciando ZeePub Bot junto con la API...")
     await bot.initialize()
     await bot.start_async()
+    # Start background URL validator (only if enabled by config)
+    from utils.url_validator import start_background_validator
+    # Run validator every hour by default (can be tuned via environment)
+    start_background_validator()
     # Guardar el bot en app_state para acceso desde rutas
     app_state['bot'] = bot.app.bot
     yield
     # Shutdown: Detener el bot
     logger.info("Deteniendo ZeePub Bot...")
     await bot.stop_async()
+    from utils.url_validator import stop_background_validator
+    stop_background_validator()
 
 app = FastAPI(
     title="ZeePub Bot API",

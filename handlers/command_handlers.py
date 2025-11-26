@@ -384,21 +384,20 @@ class CommandHandlers:
         )
         
         try:
-            from utils.url_cache import get_stats, get_broken_links, validate_and_update_url, get_url_from_hash
-            import asyncio
-            import sqlite3
-            from utils.url_cache import DB_PATH
-            
-            conn = sqlite3.connect(DB_PATH)
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT hash, url FROM url_mappings ORDER BY created_at DESC LIMIT 20"
+            from utils.url_cache import (
+                get_stats,
+                get_broken_links,
+                validate_and_update_url,
+                get_url_from_hash,
+                get_recent_links,
             )
-            recent_links = cursor.fetchall()
-            conn.close()
+            import asyncio
+
+            # Get a DB-agnostic set of recent links
+            recent_links = get_recent_links(limit=20)
             
-            # Validar en paralelo
-            tasks = [validate_and_update_url(hash_val, url) for hash_val, url in recent_links]
+            # Validar en paralelo (get_recent_links may return extra cols)
+            tasks = [validate_and_update_url(item[0], item[1]) for item in recent_links]
             if tasks:
                 await asyncio.gather(*tasks)
             
@@ -435,7 +434,7 @@ class CommandHandlers:
                     report += f"    Creado: {created_date}\n"
                     report += f"    Fallos: {failed}/3\n"
             
-            report += f"\n📄 <i>Los links se eliminan automáticamente después de 3 fallos.</i>"
+            report += f"\n📄 <i>Nota: la eliminación automática después de 3 fallos puede estar habilitada o deshabilitada según la configuración.</i>"
             
             await context.bot.edit_message_text(
                 chat_id=update.effective_chat.id,

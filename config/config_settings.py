@@ -81,6 +81,11 @@ class BotConfig:
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO").upper()
     ENABLE_PLUGINS: bool = os.getenv("ENABLE_PLUGINS", "true").lower() == "true"
     PLUGIN_DIRECTORY: str = os.getenv("PLUGIN_DIRECTORY", "plugins")
+    # Ruta para la base de datos de URL acortadas (puede ser absoluta o relativa).
+    URL_CACHE_DB_PATH: str = os.getenv("URL_CACHE_DB_PATH", "data/url_cache.db")
+    # Optional SQLAlchemy URL for external DB (Postgres, MySQL etc.). If provided
+    # url_cache will prefer this over the local SQLite file.
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "")
 
 
     @property

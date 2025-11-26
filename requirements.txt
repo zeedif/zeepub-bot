@@ -28,3 +28,7 @@ flake8==7.0.0
 # API (Mini App Backend)
 fastapi==0.111.0
 uvicorn==0.30.1
+
+# Optional DB backend via SQLAlchemy (supports external DBs like Postgres)
+SQLAlchemy==2.0.20
+psycopg2-binary==2.9.10

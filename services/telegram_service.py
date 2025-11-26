@@ -476,8 +476,13 @@ async def preparar_post_facebook(update, context: ContextTypes.DEFAULT_TYPE, uid
     if not dl_domain.startswith("http"):
         dl_domain = f"https://{dl_domain}"
     
-    # Crear hash y guardar en BD SQLite (persistente) con metadata del libro
-    url_hash = create_short_url(epub_url, book_title=titulo)
+    # Crear hash y guardar en BD (persistente) con metadata del libro
+    try:
+        url_hash = create_short_url(epub_url, book_title=titulo)
+    except Exception as e:
+        logger.error("Error creando short URL: %s", e)
+        await bot.send_message(chat_id=uid, text="❌ No fue posible generar el enlace acortado. Intenta de nuevo más tarde.")
+        return
     public_link = f"{dl_domain}/api/dl/{url_hash}"
     
     # Formatear caption consolidado con toda la metadata

@@ -152,3 +152,24 @@ docker exec zeepub_bot pytest tests/
 ## 📜 Licencia
 
 Este proyecto está bajo la licencia **MIT**.
+
+## 🧱 Persistencia opcional con Postgres + Alembic
+
+Para entornos de producción recomendamos usar un DBMS gestionado (Postgres) en
+vez del SQLite embebido. El proyecto incluye soporte para SQLAlchemy cuando la
+variable `DATABASE_URL` está configurada; alembic está incluido para gestionar
+las migraciones del esquema de `url_mappings`.
+
+Ejemplo mínimo:
+
+```bash
+# en .env
+DATABASE_URL=postgresql+psycopg2://zeepub:zeepub@db:5432/zeepub
+
+# crear migraciones (en dev)
+pip install -r requirements-dev.txt
+alembic -c alembic.ini upgrade head
+```
+
+El `docker-compose.yml` del repo añade un servicio `db` (Postgres) y puedes
+usar la variable `DATABASE_URL` para que la app use Postgres durante el runtime.
