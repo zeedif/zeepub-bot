@@ -476,8 +476,8 @@ async def preparar_post_facebook(update, context: ContextTypes.DEFAULT_TYPE, uid
     if not dl_domain.startswith("http"):
         dl_domain = f"https://{dl_domain}"
     
-    # Crear hash y guardar en BD SQLite (persistente)
-    url_hash = create_short_url(epub_url)
+    # Crear hash y guardar en BD SQLite (persistente) con metadata del libro
+    url_hash = create_short_url(epub_url, book_title=titulo)
     public_link = f"{dl_domain}/api/dl/{url_hash}"
     
     # Formatear caption consolidado con toda la metadata

@@ -27,7 +27,8 @@ def init_db():
             volume_number TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             last_checked TIMESTAMP,
-            is_valid BOOLEAN DEFAULT 1
+            is_valid BOOLEAN DEFAULT 1,
+            failed_checks INTEGER DEFAULT 0
         )
     """)
     
@@ -111,6 +112,98 @@ def count_mappings() -> int:
     try:
         cursor.execute("SELECT COUNT(*) FROM url_mappings")
         return cursor.fetchone()[0]
+    finally:
+        conn.close()
+
+async def validate_and_update_url(url_hash: str, url: str) -> bool:
+    """Valida una URL y actualiza su estado. Retorna True si es válida."""
+    import aiohttp
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            # Usar GET con range limitado en lugar de HEAD para mejor compatibilidad
+            headers = {'Range': 'bytes=0-1024'}  # Solo descargar los primeros 1KB
+            async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=15), allow_redirects=True) as resp:
+                # Aceptar 200 (OK) o 206 (Partial Content)
+                is_valid = 200 <= resp.status < 300
+    except:
+        is_valid = False
+    
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    try:
+        if is_valid:
+            # Restablecer contador de fallos
+            cursor.execute(
+                "UPDATE url_mappings SET last_checked = CURRENT_TIMESTAMP, is_valid = 1, failed_checks = 0 WHERE hash = ?",
+                (url_hash,)
+            )
+        else:
+            # Incrementar contador de fallos
+            cursor.execute(
+                "UPDATE url_mappings SET last_checked = CURRENT_TIMESTAMP, is_valid = 0, failed_checks = failed_checks + 1 WHERE hash = ?",
+                (url_hash,)
+            )
+            
+            # Borrar si alcanzó 3 fallos
+                # Auto‑deletion after 3 fallos ha sido desactivada.
+                # Se mantiene el registro para que el admin pueda revisarlo manualmente.
+                # Si deseas volver a habilitar la eliminación automática, descomenta el bloque siguiente.
+                # cursor.execute("SELECT failed_checks FROM url_mappings WHERE hash = ?", (url_hash,))
+                # result = cursor.fetchone()
+                # if result and result[0] >= 3:
+                #     cursor.execute("DELETE FROM url_mappings WHERE hash = ?", (url_hash,))
+                #     logger.warning(f"Deleted URL mapping {url_hash} after 3 failed checks")
+        
+        conn.commit()
+    finally:
+        conn.close()
+    
+    return is_valid
+
+def get_stats() -> dict:
+    """Retorna estadísticas de los links."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute("SELECT COUNT(*) FROM url_mappings")
+        total = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM url_mappings WHERE is_valid = 1")
+        valid = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM url_mappings WHERE is_valid = 0")
+        broken = cursor.fetchone()[0]
+        
+        cursor.execute("SELECT COUNT(*) FROM url_mappings WHERE failed_checks >= 2")
+        at_risk = cursor.fetchone()[0]
+        
+        return {
+            "total": total,
+            "valid": valid,
+            "broken": broken,
+            "at_risk": at_risk
+        }
+    finally:
+        conn.close()
+
+def get_broken_links(limit: int = 10):
+    """Retorna lista de links rotos con su información."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute(
+            """SELECT hash, book_title, failed_checks, last_checked 
+               FROM url_mappings 
+               WHERE is_valid = 0 
+               ORDER BY failed_checks DESC, last_checked DESC 
+               LIMIT ?""",
+            (limit,)
+        )
+        return cursor.fetchall()
     finally:
         conn.close()
 

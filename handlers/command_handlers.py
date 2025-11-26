@@ -25,6 +25,9 @@ class CommandHandlers:
         app.add_handler(CommandHandler("evil", self.evil))
         # Registrar /reset
         app.add_handler(CommandHandler("reset", self.reset_command))
+        # Registrar /purge_link (admin only)
+        app.add_handler(CommandHandler("purge_link", self.purge_link))        # Registrar /status_links
+        app.add_handler(CommandHandler("status_links", self.status_links))
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /start: inicializa estado; admin->evil, otros->normal."""
@@ -275,8 +278,58 @@ class CommandHandlers:
                 message_thread_id=thread_id
             )
 
+    async def purge_link(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Elimina un link acortado de la caché (solo admins)."""
+        uid = update.effective_user.id
+
+        # Verificar que sea admin
+        if uid not in config.ADMIN_USERS:
+            await update.message.reply_text("⛔ No tienes permisos para usar este comando.")
+            return
+
+        # Verificar argumentos
+        if not context.args or len(context.args) != 1:
+            await update.message.reply_text(
+                "❌ Uso incorrecto.\n"
+                "Uso: /purge_link <hash>\n"
+                "Ejemplo: /purge_link abcdefg"
+            )
+            return
+
+        hash_to_purge = context.args[0]
+
+        try:
+            from utils.url_cache import DB_PATH
+            import sqlite3
+
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+
+            cursor.execute("DELETE FROM url_mappings WHERE hash = ?", (hash_to_purge,))
+            rows_deleted = cursor.rowcount
+            conn.commit()
+            conn.close()
+
+            if rows_deleted > 0:
+                await update.message.reply_text(
+                    f"✅ Link con hash <code>{hash_to_purge}</code> eliminado de la caché.",
+                    parse_mode="HTML"
+                )
+                logger.info(f"Admin {uid} eliminó link {hash_to_purge} de la caché.")
+            else:
+                await update.message.reply_text(
+                    f"ℹ️ No se encontró ningún link con hash <code>{hash_to_purge}</code> en la caché.",
+                    parse_mode="HTML"
+                )
+
+        except Exception as e:
+            logger.error(f"Error en purge_link para hash {hash_to_purge}: {e}", exc_info=True)
+            await update.message.reply_text(
+                f"❌ Error al intentar eliminar el link: {str(e)}"
+            )
 
     async def reset_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        # Existing reset command implementation
         """Resetea el contador de descargas de un usuario (solo admins)."""
         uid = update.effective_user.id
 
@@ -311,3 +364,90 @@ class CommandHandlers:
         )
 
         logger.info(f"Admin {uid} reseteó descargas de usuario {target_uid} (antes: {old_count})")
+
+    async def status_links(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Muestra estado de los links acortados (solo admins y publishers)."""
+        uid = update.effective_user.id
+        
+        # Verificar permisos
+        if uid not in config.ADMIN_USERS and uid not in config.FACEBOOK_PUBLISHERS:
+            await update.message.reply_text("⛔ No tienes permisos para usar este comando.")
+            return
+        
+        thread_id = get_thread_id(update)
+        
+        # Enviar mensaje de "procesando"
+        msg = await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="🔄 Validando links, por favor espera...",
+            message_thread_id=thread_id
+        )
+        
+        try:
+            from utils.url_cache import get_stats, get_broken_links, validate_and_update_url, get_url_from_hash
+            import asyncio
+            import sqlite3
+            from utils.url_cache import DB_PATH
+            
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT hash, url FROM url_mappings ORDER BY created_at DESC LIMIT 20"
+            )
+            recent_links = cursor.fetchall()
+            conn.close()
+            
+            # Validar en paralelo
+            tasks = [validate_and_update_url(hash_val, url) for hash_val, url in recent_links]
+            if tasks:
+                await asyncio.gather(*tasks)
+            
+            # Actualizar estadísticas después de la validación
+            stats = get_stats()
+            broken = get_broken_links(limit=5)
+            
+            # Construir reporte
+            success_rate = (stats['valid'] / stats['total'] * 100) if stats['total'] > 0 else 0
+            
+            report = f"🔍 <b>Estado de Links Acortados</b>\n\n"
+            report += f"📊 <b>Estadísticas:</b>\n"
+            report += f"  • Total: {stats['total']} links\n"
+            report += f"  ✅ Válidos: {stats['valid']}\n"
+            report += f"  ❌ Rotos: {stats['broken']}\n"
+            report += f"  ⚠️ En riesgo: {stats['at_risk']} (2 fallos)\n"
+            report += f"  📈 Tasa de éxito: {success_rate:.1f}%\n"
+            
+            if broken:
+                report += f"\n⚠️ <b>Links Rotos (máximo 5):</b>\n"
+                for hash_val, title, failed, last_checked in broken:
+                    title_short = (title[:40] + '...') if title and len(title) > 40 else (title or 'Sin título')
+                    
+                    # Obtener fecha de creación
+                    conn = sqlite3.connect(DB_PATH)
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT created_at FROM url_mappings WHERE hash = ?", (hash_val,))
+                    created_row = cursor.fetchone()
+                    conn.close()
+                    created_date = created_row[0] if created_row else 'Desconocida'
+                    
+                    report += f"  • {title_short}\n"
+                    report += f"    Hash: <code>{hash_val}</code>\n"
+                    report += f"    Creado: {created_date}\n"
+                    report += f"    Fallos: {failed}/3\n"
+            
+            report += f"\n📄 <i>Los links se eliminan automáticamente después de 3 fallos.</i>"
+            
+            await context.bot.edit_message_text(
+                chat_id=update.effective_chat.id,
+                message_id=msg.message_id,
+                text=report,
+                parse_mode="HTML"
+            )
+            
+        except Exception as e:
+            logger.error(f"Error en status_links: {e}", exc_info=True)
+            await context.bot.edit_message_text(
+                chat_id=update.effective_chat.id,
+                message_id=msg.message_id,
+                text=f"❌ Error al obtener estado de links: {str(e)}"
+            )
