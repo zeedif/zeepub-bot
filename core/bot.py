@@ -70,6 +70,14 @@ class ZeePubBot:
         await self.app.start()
         await self.app.updater.start_polling()
         logger.info("Bot iniciado en modo asíncrono (API).")
+        
+        # Iniciar scheduler de reportes semanales
+        try:
+            from services.weekly_reports import start_weekly_scheduler
+            start_weekly_scheduler(self.app.bot)
+            logger.info("Weekly report scheduler iniciado")
+        except Exception as e:
+            logger.error(f"Error iniciando weekly scheduler: {e}", exc_info=True)
 
     async def stop_async(self):
         """Detiene el bot de forma asíncrona."""

@@ -184,6 +184,10 @@ def formatear_mensaje_portada(meta: dict) -> str:
     internal_title = meta.get("internal_title")
     collection_title = meta.get("titulo_serie")
     
+    # Limpiar collection_title: remover [...] y su contenido
+    if collection_title:
+        collection_title = re.sub(r'\[.*?\]', '', collection_title).strip()
+    
     if internal_title and collection_title:
         full_title = meta.get("titulo_volumen") or ""
         series, volume = parse_title_string(full_title)

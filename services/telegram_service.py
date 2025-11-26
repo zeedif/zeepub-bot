@@ -447,8 +447,8 @@ async def enviar_libro_directo(bot, user_id: int, title: str, download_url: str,
         if slug:
             caption += f"\n#{slug}"
 
-        # Nombre de archivo limpio
-        fname = f"{title[:50]}.epub"
+        # Nombre de archivo desde URL (igual que en descargar_epub_pendiente)
+        fname = unquote(urlparse(download_url).path.split("/")[-1]) or "archivo.epub"
         
         await send_doc_bytes(bot, destino, caption, epub_bytes, filename=fname, parse_mode="HTML")
 
