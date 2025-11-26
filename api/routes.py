@@ -226,8 +226,8 @@ async def public_download(
                     # Intentar borrar después
                     try:
                         os.unlink(data)
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.debug("Could not remove temp file from streaming proxy: %s", e)
 
             return StreamingResponse(
                 content=iterfile(),

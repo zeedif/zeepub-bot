@@ -628,22 +628,27 @@ class CommandHandlers:
                 "-f", filename
             ]
             
-            process = subprocess.run(cmd, env=env, capture_output=True, text=True)
+            import asyncio as _asyncio
+            process = await _asyncio.to_thread(subprocess.run, cmd, env=env, capture_output=True, text=True)
             
             if process.returncode != 0:
                 raise Exception(f"pg_dump failed: {process.stderr}")
                 
-            # Enviar archivo
-            await context.bot.send_document(
-                chat_id=update.effective_chat.id,
-                document=open(filename, "rb"),
-                filename=filename,
-                caption=f"📦 Backup de base de datos\n📅 {timestamp}",
-                message_thread_id=thread_id
-            )
-            
-            # Limpiar
-            os.remove(filename)
+            # Enviar archivo (asegurar cierre del descriptor)
+            with open(filename, "rb") as f:
+                await context.bot.send_document(
+                    chat_id=update.effective_chat.id,
+                    document=f,
+                    filename=filename,
+                    caption=f"📦 Backup de base de datos\n📅 {timestamp}",
+                    message_thread_id=thread_id
+                )
+
+            # Limpiar (intentar eliminar, si falla solo loguear)
+            try:
+                os.remove(filename)
+            except Exception:
+                logger.debug("No se pudo eliminar backup temporal: %s", filename)
             await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=msg.message_id)
             
         except Exception as e:
@@ -721,7 +726,8 @@ class CommandHandlers:
                 "-f", filename
             ]
             
-            process = subprocess.run(cmd, env=env, capture_output=True, text=True)
+            import asyncio as _asyncio
+            process = await _asyncio.to_thread(subprocess.run, cmd, env=env, capture_output=True, text=True)
             
             if process.returncode != 0:
                 raise Exception(f"Restore failed: {process.stderr}")
@@ -733,7 +739,10 @@ class CommandHandlers:
             )
             logger.info(f"Publisher {uid} restauró la base de datos desde {doc.file_name}")
             
-            os.remove(filename)
+            try:
+                os.remove(filename)
+            except Exception:
+                logger.debug("No se pudo eliminar archivo temporal de restore: %s", filename)
             
         except Exception as e:
             logger.error(f"Error en restore_db: {e}", exc_info=True)
@@ -799,17 +808,20 @@ class CommandHandlers:
                     writer.writerow(columns)  # Header
                     writer.writerows(rows)
             
-            # Enviar archivo
-            await context.bot.send_document(
-                chat_id=update.effective_chat.id,
-                document=open(filename, "rb"),
-                filename=filename,
-                caption=f"📊 Exportación de base de datos\n📅 {timestamp}\n📦 {len(rows)} registros",
-                message_thread_id=thread_id
-            )
-            
-            # Limpiar
-            os.remove(filename)
+            # Enviar archivo cerrando descriptor cuando termine
+            with open(filename, "rb") as f:
+                await context.bot.send_document(
+                    chat_id=update.effective_chat.id,
+                    document=f,
+                    filename=filename,
+                    caption=f"📊 Exportación de base de datos\n📅 {timestamp}\n📦 {len(rows)} registros",
+                    message_thread_id=thread_id
+                )
+
+            try:
+                os.remove(filename)
+            except Exception:
+                logger.debug("No se pudo eliminar CSV temporal: %s", filename)
             await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=msg.message_id)
             
         except Exception as e:

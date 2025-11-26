@@ -302,10 +302,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "descargar_epub":
         try:
             await query.answer()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Could not answer callback for descargar_epub: %s", e)
         from services.telegram_service import descargar_epub_pendiente
-        await descargar_epub_pendiente(update, context, uid)
         await descargar_epub_pendiente(update, context, uid)
         return
 
@@ -315,8 +314,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await preparar_post_facebook(update, context, uid)
         try:
             await query.answer()
-        except:
-            pass
+        except Exception as e:
+            logger.debug("Could not answer callback for preparar_post_fb: %s", e)
         return
 
     if data == "publicar_fb":
@@ -324,16 +323,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await publicar_facebook_action(update, context, uid)
         try:
             await query.answer()
-        except:
-            pass
+        except Exception as e:
+            logger.debug("Could not answer callback for publicar_fb: %s", e)
         return
 
     if data == "descartar_fb":
         try:
             await query.message.delete()
             await query.answer("🗑️ Descartado")
-        except:
-            pass
+        except Exception as e:
+            logger.debug("Could not discard FB preview/delete message: %s", e)
         return
 
 def register_handlers(app):

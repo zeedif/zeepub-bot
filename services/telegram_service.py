@@ -264,13 +264,13 @@ async def descargar_epub_pendiente(update, context: ContextTypes.DEFAULT_TYPE, u
     if msg_id:
         try:
             await bot.delete_message(chat_id=chat_origen, message_id=msg_id)
-        except:
-            pass
+        except Exception as e:
+            logger.debug("Could not delete msg_id %s: %s", msg_id, e)
     if msg_info_id:
         try:
             await bot.delete_message(chat_id=chat_origen, message_id=msg_info_id)
-        except:
-            pass
+        except Exception as e:
+            logger.debug("Could not delete msg_info_id %s: %s", msg_info_id, e)
 
     # Si eligió Volver, descartar buffer
     if update.callback_query.data == "volver_ultima":
@@ -351,8 +351,8 @@ async def descargar_epub_pendiente(update, context: ContextTypes.DEFAULT_TYPE, u
         if prep:
             try:
                 await bot.delete_message(chat_id=destino, message_id=prep.message_id)
-            except:
-                pass
+            except Exception as e:
+                logger.debug("Could not delete prep message %s: %s", getattr(prep, 'message_id', None), e)
 
     # Mostrar opciones finales
     keyboard = [
@@ -466,8 +466,8 @@ async def enviar_libro_directo(bot, user_id: int, title: str, download_url: str,
         # Limpieza
         try:
             await bot.delete_message(chat_id=user_id, message_id=prep_msg.message_id)
-        except:
-            pass
+        except Exception as e:
+            logger.debug("Could not delete prep_msg %s: %s", getattr(prep_msg, 'message_id', None), e)
             
         return True
 

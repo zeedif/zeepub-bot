@@ -43,7 +43,8 @@ async def fetch_bytes(url: str, session: aiohttp.ClientSession = None, timeout: 
                 tmp = tempfile.NamedTemporaryFile(delete=False)
                 try:
                     async for chunk in resp.content.iter_chunked(64 * 1024):
-                        tmp.write(chunk)
+                        # Offload blocking disk writes to threadpool
+                        await asyncio.to_thread(tmp.write, chunk)
                     tmp.close()
                     logger.debug("fetch_bytes devolvió archivo temporal: %s (%d bytes)", tmp.name, total)
                     return tmp.name
@@ -60,7 +61,8 @@ async def fetch_bytes(url: str, session: aiohttp.ClientSession = None, timeout: 
             if length > MAX_IN_MEMORY_BYTES:
                 tmp = tempfile.NamedTemporaryFile(delete=False)
                 try:
-                    tmp.write(data)
+                    # Write the whole payload to disk via threadpool to avoid blocking
+                    await asyncio.to_thread(tmp.write, data)
                     tmp.close()
                     logger.debug("fetch_bytes devolvió archivo temporal por tamaño real: %s (%d bytes)", tmp.name, length)
                     return tmp.name

@@ -308,7 +308,8 @@ async def validate_and_update_url(url_hash: str, url: str) -> bool:
             async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=15), allow_redirects=True) as resp:
                 # Aceptar 200 (OK) o 206 (Partial Content)
                 is_valid = 200 <= resp.status < 300
-    except:
+    except Exception as e:
+        logger.debug("validate_and_update_url check failed for %s: %s", url_hash, e)
         is_valid = False
     
     if config.DATABASE_URL and _HAS_SQLALCHEMY:
