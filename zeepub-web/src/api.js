@@ -104,3 +104,33 @@ export const downloadBook = async (book, targetChatId = null) => {
         return false;
     }
 };
+
+export const prepareFacebookPost = async (book) => {
+    try {
+        const response = await fetch(`${API_BASE}/facebook/prepare`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ book })
+        });
+        if (!response.ok) throw new Error('Failed to prepare post');
+        return await response.json();
+    } catch (error) {
+        console.error('Error preparing FB post:', error);
+        return null;
+    }
+};
+
+export const publishFacebookPost = async (caption, coverUrl) => {
+    try {
+        const response = await fetch(`${API_BASE}/facebook/publish`, {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ caption, cover_url: coverUrl })
+        });
+        if (!response.ok) throw new Error('Failed to publish post');
+        return await response.json();
+    } catch (error) {
+        console.error('Error publishing FB post:', error);
+        return null;
+    }
+};

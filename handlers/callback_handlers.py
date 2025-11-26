@@ -306,13 +306,41 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
         from services.telegram_service import descargar_epub_pendiente
         await descargar_epub_pendiente(update, context, uid)
+        await descargar_epub_pendiente(update, context, uid)
+        return
+
+    # Facebook handlers
+    if data == "preparar_post_fb":
+        from services.telegram_service import preparar_post_facebook
+        await preparar_post_facebook(update, context, uid)
+        try:
+            await query.answer()
+        except:
+            pass
+        return
+
+    if data == "publicar_fb":
+        from services.telegram_service import publicar_facebook_action
+        await publicar_facebook_action(update, context, uid)
+        try:
+            await query.answer()
+        except:
+            pass
+        return
+
+    if data == "descartar_fb":
+        try:
+            await query.message.delete()
+            await query.answer("🗑️ Descartado")
+        except:
+            pass
         return
 
 def register_handlers(app):
     # CallbackQuery handlers
     app.add_handler(CallbackQueryHandler(set_destino, pattern="^destino\\|"))
     app.add_handler(CallbackQueryHandler(buscar_epub, pattern="^buscar$"))
-    app.add_handler(CallbackQueryHandler(button_handler, pattern="^(col\\||lib\\||nav\\||subir_nivel|volver_colecciones|volver_ultima|cerrar|descargar_epub)"))
+    app.add_handler(CallbackQueryHandler(button_handler, pattern="^(col\\||lib\\||nav\\||subir_nivel|volver_colecciones|volver_ultima|cerrar|descargar_epub|preparar_post_fb|publicar_fb|descartar_fb)"))
     # Texto libre handlers
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_manual_destino))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_search_text))

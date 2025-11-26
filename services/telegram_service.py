@@ -205,15 +205,22 @@ async def publicar_libro(update, context: ContextTypes.DEFAULT_TYPE,
             )
             user_state["msg_info_id"] = msg_info.message_id
 
+        keyboard = [
+            [InlineKeyboardButton("📥 Descargar EPUB", callback_data="descargar_epub")],
+        ]
+        
+        # Botón Facebook para publishers
+        if uid in config.FACEBOOK_PUBLISHERS:
+            keyboard.append([InlineKeyboardButton("📝 Post FB", callback_data="preparar_post_fb")])
+            
+        keyboard.append([InlineKeyboardButton("↩️ Volver", callback_data="volver_ultima")])
+
         sent = await bot.send_message(
             chat_id=chat_origen,
             text="¿Deseas descargar este EPUB?",
             parse_mode="HTML",
             message_thread_id=thread_id_origen,
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("📥 Descargar EPUB", callback_data="descargar_epub")],
-                [InlineKeyboardButton("↩️ Volver", callback_data="volver_ultima")],
-            ])
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
         user_state["msg_botones_id"] = sent.message_id
         user_state["titulo_pendiente"] = titulo
@@ -445,3 +452,197 @@ async def enviar_libro_directo(bot, user_id: int, title: str, download_url: str,
         logger.error(f"Error en enviar_libro_directo: {e}", exc_info=True)
         await bot.send_message(chat_id=user_id, text=f"❌ Ocurrió un error interno: {str(e)}")
         return False
+
+
+async def preparar_post_facebook(update, context: ContextTypes.DEFAULT_TYPE, uid: int):
+    """Genera vista previa del post de Facebook."""
+    bot = context.bot
+    user_state = state_manager.get_user_state(uid)
+    
+    # Recuperar datos del estado
+    meta = user_state.get("meta_pendiente", {})
+    epub_url = user_state.get("epub_url", "")
+    titulo = user_state.get("titulo_pendiente", "")
+    
+    if not epub_url:
+        await bot.send_message(chat_id=uid, text="❌ No hay libro seleccionado.")
+        return
+
+    # Construir link público acortado con SHA256 persistente
+    from utils.url_cache import create_short_url
+    from urllib.parse import quote
+    
+    dl_domain = config.DL_DOMAIN.rstrip('/')
+    if not dl_domain.startswith("http"):
+        dl_domain = f"https://{dl_domain}"
+    
+    # Crear hash y guardar en BD SQLite (persistente)
+    url_hash = create_short_url(epub_url)
+    public_link = f"{dl_domain}/api/dl/{url_hash}"
+    
+    # Formatear caption consolidado con toda la metadata
+    sinopsis = meta.get("sinopsis", "")
+    from utils.helpers import escapar_html
+    sinopsis_esc = escapar_html(sinopsis) if sinopsis else "Sin sinopsis disponible."
+    
+    # Info del archivo
+    epub_buffer = user_state.get("epub_buffer")
+    if epub_buffer:
+        if isinstance(epub_buffer, (bytes, bytearray)):
+            size_mb = len(epub_buffer) / (1024 * 1024)
+        elif isinstance(epub_buffer, str) and os.path.exists(epub_buffer):
+            size_mb = os.path.getsize(epub_buffer) / (1024 * 1024)
+        else:
+            size_mb = 0.0
+    else:
+        size_mb = 0.0
+    
+    version = meta.get("epub_version", "2.0")
+    fecha_mod = meta.get("fecha_modificacion", "Desconocida")
+    fecha_pub = meta.get("fecha_publicacion", "Desconocida")
+    
+    # Construir secciones del mensaje
+    titulo_vol = meta.get("titulo_volumen") or titulo
+    
+    # Maquetadores con hashtags
+    maquetadores = meta.get("maquetadores", [])
+    maquet_str = ""
+    if maquetadores:
+        maquet_tags = " ".join([f"#{m.replace(' ', '')}" for m in maquetadores])
+        maquet_str = f"Maquetado por: {maquet_tags}\n"
+    
+    # Categoría
+    categoria = meta.get("categoria", "")
+    cat_str = f"Categoría: {categoria}\n" if categoria else ""
+    
+    # Demografía
+    demografia = meta.get("demografia", [])
+    demo_str = f"Demografía: {', '.join(demografia)}\n" if demografia else ""
+    
+    # Géneros
+    generos = meta.get("generos", [])
+    gen_str = f"Géneros: {', '.join(generos)}\n" if generos else ""
+    
+    # Autor(es)
+    autores = meta.get("autores", [])
+    autor_str = f"Autor: {', '.join(autores)}\n" if autores else ""
+    
+    # Ilustrador
+    ilustrador = meta.get("ilustrador")
+    ilus_str = f"Ilustrador: {ilustrador}\n" if ilustrador else ""
+    
+    # Publicado
+    pub_str = f"Publicado: {fecha_pub}\n" if fecha_pub != "Desconocida" else ""
+    
+    # Publisher/Traductor (si existe URL)
+    publisher = meta.get("publisher")
+    publisher_url = meta.get("publisher_url")
+    traductor = meta.get("traductor")
+    
+    trad_str = ""
+    if traductor and publisher_url:
+        trad_str = f"Traducción: {traductor} − {publisher} − {publisher_url}\n"
+    elif traductor:
+        trad_str = f"Traducción: {traductor}\n"
+    elif publisher:
+        trad_str = f"Publisher: {publisher}\n"
+
+    caption = (
+        f"{titulo_vol}\n\n"
+        f"{maquet_str}"
+        f"{cat_str}"
+        f"{demo_str}"
+        f"{gen_str}"
+        f"{autor_str}"
+        f"{ilus_str}"
+        f"{pub_str}"
+        f"{trad_str}\n"
+        f"Sinopsis:\n{sinopsis_esc}\n\n"
+        f"ℹ️ Versión Epub: {version}\n"
+        f"📅 Actualizado: {fecha_mod}\n"
+        f"📦 Tamaño: {size_mb:.2f} MB\n\n"
+        f"⬇️ Descarga: {public_link}"
+    )
+    
+    # Guardar en estado para publicación
+    user_state["fb_caption"] = caption
+    # La portada ya se envió antes, pero para publicar necesitamos URL o reusar bytes.
+    # Si tenemos bytes en epub_buffer, podemos reusarlos.
+    # Si no, usamos portada_url si existe.
+    # Para simplificar, en la acción de publicar usaremos la URL de portada si es pública,
+    # o re-extraeremos del buffer si es necesario.
+    
+    # Enviar vista previa
+    btns = []
+    if config.FACEBOOK_PAGE_ACCESS_TOKEN and config.FACEBOOK_GROUP_ID:
+        btns.append([InlineKeyboardButton("🚀 Publicar ahora", callback_data="publicar_fb")])
+    
+    btns.append([InlineKeyboardButton("🗑️ Descartar", callback_data="descartar_fb")])
+    
+    # Enviar como mensaje nuevo
+    await bot.send_message(
+        chat_id=uid,
+        text=f"📝 <b>Vista Previa Facebook:</b>\n\n{caption}",
+        parse_mode="HTML",
+        disable_web_page_preview=False,
+        reply_markup=InlineKeyboardMarkup(btns)
+    )
+
+async def publicar_facebook_action(update, context: ContextTypes.DEFAULT_TYPE, uid: int):
+    """Publica el post en Facebook."""
+    bot = context.bot
+    user_state = state_manager.get_user_state(uid)
+    caption = user_state.get("fb_caption")
+    
+    if not caption:
+        await bot.send_message(chat_id=uid, text="❌ No hay post preparado.")
+        return
+        
+    # Intentar obtener portada
+    epub_buffer = user_state.get("epub_buffer")
+    cover_bytes = None
+    if epub_buffer:
+        cover_bytes = extract_cover_from_epub(epub_buffer)
+        
+    if not cover_bytes:
+        await bot.send_message(chat_id=uid, text="⚠️ No se pudo obtener la portada para subir a Facebook.")
+        return
+
+    # Subir a Facebook usando Graph API
+    import httpx
+    
+    msg = await bot.send_message(chat_id=uid, text="⏳ Publicando en Facebook...")
+    
+    try:
+        url = f"https://graph.facebook.com/{config.FACEBOOK_GROUP_ID}/photos"
+        
+        # Limpiar caption de HTML para FB
+        clean_caption = caption.replace("<b>", "").replace("</b>", "").replace("<i>", "").replace("</i>", "")
+        
+        data = {
+            "caption": clean_caption,
+            "access_token": config.FACEBOOK_PAGE_ACCESS_TOKEN,
+            "published": "true"
+        }
+        
+        # Enviar archivo
+        files = {"source": ("cover.jpg", io.BytesIO(cover_bytes), "image/jpeg")}
+        
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(url, data=data, files=files, timeout=60)
+            resp.raise_for_status()
+            fb_res = resp.json()
+            
+        await bot.edit_message_text(
+            chat_id=uid, 
+            message_id=msg.message_id, 
+            text=f"✅ Publicado exitosamente!\nID: {fb_res.get('id')}"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error publicando en FB: {e}")
+        await bot.edit_message_text(
+            chat_id=uid, 
+            message_id=msg.message_id, 
+            text=f"❌ Error al publicar: {str(e)}"
+        )

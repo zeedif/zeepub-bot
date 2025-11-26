@@ -54,6 +54,20 @@ class BotConfig:
         for x in os.getenv("PREMIUM_LIST", "").split(",")
         if x.strip().isdigit()
     })
+    
+    # Facebook Publishers
+    FACEBOOK_PUBLISHERS: Set[int] = field(default_factory=lambda: {
+        int(x.strip())
+        for x in os.getenv("FACEBOOK_PUBLISHERS", "").split(",")
+        if x.strip().isdigit()
+    })
+    
+    # Facebook Credentials
+    FACEBOOK_PAGE_ACCESS_TOKEN: str = os.getenv("FACEBOOK_PAGE_ACCESS_TOKEN", "")
+    FACEBOOK_GROUP_ID: str = os.getenv("FACEBOOK_GROUP_ID", "")
+    
+    # Domain for public downloads
+    DL_DOMAIN: str = os.getenv("DL_DOMAIN", "dl.zeepubs.com")
 
     # Límites por hora
     MAX_DOWNLOADS_PER_DAY: int = int(os.getenv("MAX_DOWNLOADS_PER_DAY", "5"))

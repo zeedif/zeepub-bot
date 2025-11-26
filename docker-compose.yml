@@ -10,7 +10,8 @@ services:
     #   - "8000:8000"
     env_file:
       - .env
-      # volumes:
+    volumes:
+      - ./data:/app/data # Persist URL cache database
       # - ./config:/app/config  # Only for development
       # - ./plugins:/app/plugins  # Only for development
       # Uncomment if you want to persist logs outside

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import WebApp from '@twa-dev/sdk';
-import { fetchFeed, searchBooks, fetchConfig, downloadBook } from './api';
+import { fetchFeed, searchBooks, fetchConfig, downloadBook, prepareFacebookPost, publishFacebookPost } from './api';
 import BookListItem from './components/BookListItem';
 import NavigationListItem from './components/NavigationListItem';
 import SearchBar from './components/SearchBar';
@@ -36,6 +36,7 @@ function App() {
   const [adminConfig, setAdminConfig] = useState(null);
   const [adminMode, setAdminMode] = useState(false); // true = Evil/Admin Mode
   const [selectedDestination, setSelectedDestination] = useState(null); // null = default (user)
+  const [isFacebookPublisher, setIsFacebookPublisher] = useState(false);
 
   const scrollContainerRef = React.useRef(null);
 
@@ -56,6 +57,9 @@ function App() {
         if (config.destinations && config.destinations.length > 0) {
           setSelectedDestination(config.destinations[0].id);
         }
+      }
+      if (config && config.is_facebook_publisher) {
+        setIsFacebookPublisher(true);
       }
       loadFeed();
     };
@@ -228,6 +232,35 @@ function App() {
     );
   };
 
+  const handleFacebookPost = async (book) => {
+    WebApp.showAlert('⏳ Preparando post...');
+    const data = await prepareFacebookPost(book);
+
+    if (!data) {
+      WebApp.showAlert('❌ Error al preparar post.');
+      return;
+    }
+
+    WebApp.showPopup({
+      title: 'Vista Previa Facebook',
+      message: data.caption.replace(/<[^>]*>/g, ''), // Strip HTML for popup
+      buttons: [
+        { id: 'publish', type: 'default', text: '🚀 Publicar' },
+        { id: 'cancel', type: 'destructive', text: 'Cancelar' }
+      ]
+    }, async (btnId) => {
+      if (btnId === 'publish') {
+        WebApp.showAlert('⏳ Publicando...');
+        const res = await publishFacebookPost(data.caption, data.cover_url);
+        if (res && res.success) {
+          WebApp.showAlert('✅ Publicado exitosamente!');
+        } else {
+          WebApp.showAlert('❌ Error al publicar.');
+        }
+      }
+    });
+  };
+
   const isNavigationItem = (item) => {
     return item.links?.some(l =>
       l.rel === 'subsection' ||
@@ -364,6 +397,8 @@ function App() {
                     key={item.id || index}
                     book={item}
                     onDownload={handleDownload}
+                    isFacebookPublisher={isFacebookPublisher}
+                    onFacebookPost={handleFacebookPost}
                   />
                 );
               }

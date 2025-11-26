@@ -7,6 +7,9 @@ from config.config_settings import config
 from utils.http_client import parse_feed_from_url
 from utils.helpers import build_search_url
 from utils.security import validate_telegram_data
+from utils.http_client import fetch_bytes
+from services.epub_service import parse_opf_from_epub, extract_cover_from_epub
+from utils.helpers import generar_slug_from_meta, formatear_mensaje_portada
 import logging
 
 router = APIRouter(prefix="/api")
@@ -162,15 +165,198 @@ async def proxy_image(rest_of_path: str, request: Request):
         logger.error(f"Error proxying image: {e}")
         raise HTTPException(status_code=404, detail="Image not found")
 
+from utils.url_cache import get_url_from_hash
+
+@router.get("/dl/{url_hash}")
+async def short_download(url_hash: str):
+    """
+    Endpoint acortado para descargas usando hash SHA256.
+    """
+    try:
+        # Buscar en BD SQLite
+        url = get_url_from_hash(url_hash)
+        if not url:
+            raise HTTPException(status_code=404, detail="Short URL not found")
+        
+        # Extraer título del final de la URL
+        from urllib.parse import unquote, urlparse
+        parsed = urlparse(url)
+        title = unquote(parsed.path.split('/')[-1]).replace('.epub', '')
+        
+        # Redirigir al endpoint público
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url=f"/api/public/dl?url={url}&title={title}")
+    except Exception as e:
+        logger.error(f"Error decoding short URL: {e}")
+        raise HTTPException(status_code=404, detail="Invalid short URL")
+
+@router.get("/public/dl")
+async def public_download(
+    url: str = Query(..., description="Source EPUB URL"),
+    title: str = Query("libro", description="Filename hint")
+):
+    """
+    Proxy público para descargas.
+    Sirve el archivo desde la fuente OPDS original.
+    """
+    try:
+        # Validar URL básica para evitar SSRF flagrante (aunque fetch_bytes ya es genérico)
+        if not url.startswith("http"):
+            raise HTTPException(status_code=400, detail="Invalid URL")
+
+        # Usar fetch_bytes para obtener el contenido (memoria o archivo temp)
+        # Nota: fetch_bytes maneja archivos grandes escribiendo a disco
+        data = await fetch_bytes(url, timeout=120)
+        
+        if not data:
+            raise HTTPException(status_code=404, detail="Could not fetch file")
+
+        # Determinar si es archivo o bytes
+        if isinstance(data, str) and os.path.exists(data):
+            # Es un archivo temporal
+            def iterfile():
+                with open(data, mode="rb") as file_like:
+                    yield from file_like
+                # Intentar borrar después (esto es tricky en generadores, 
+                # idealmente usar BackgroundTasks para cleanup, pero por simplicidad...)
+                try:
+                    os.unlink(data)
+                except:
+                    pass
+
+            return Response(
+                content=iterfile(),
+                media_type="application/epub+zip",
+                headers={"Content-Disposition": f'attachment; filename="{title}.epub"'}
+            )
+        else:
+            # Son bytes en memoria
+            return Response(
+                content=data,
+                media_type="application/epub+zip",
+                headers={"Content-Disposition": f'attachment; filename="{title}.epub"'}
+            )
+
+    except Exception as e:
+        logger.error(f"Error in public download proxy: {e}")
+        raise HTTPException(status_code=500, detail="Download failed")
+
+@router.post("/facebook/prepare")
+async def prepare_facebook_post(
+    request: Request,
+    current_uid: int = Depends(get_current_user)
+):
+    """
+    Prepara el texto y link para un post de Facebook.
+    """
+    if current_uid not in config.FACEBOOK_PUBLISHERS:
+        raise HTTPException(status_code=403, detail="Not authorized")
+        
+    try:
+        data = await request.json()
+        book = data.get('book')
+        if not book:
+            raise HTTPException(status_code=400, detail="Missing book data")
+            
+        # Extraer datos
+        title = book.get('title', 'Libro')
+        download_url = next((l['href'] for l in book.get('links', []) if 'acquisition' in l.get('rel', '') or 'epub' in l.get('type', '')), None)
+        cover_url = book.get('cover_url')
+        
+        if not download_url:
+            raise HTTPException(status_code=400, detail="No download URL found")
+
+        # Construir link público acortado con SHA256
+        from utils.url_cache import create_short_url
+        from urllib.parse import quote
+        
+        dl_domain = config.DL_DOMAIN.rstrip('/')
+        # Asegurar esquema
+        if not dl_domain.startswith("http"):
+            dl_domain = f"https://{dl_domain}"
+        
+        # Crear hash y guardar en BD SQLite
+        url_hash = create_short_url(download_url)
+        public_link = f"{dl_domain}/api/dl/{url_hash}"
+        
+        # Simular metadatos básicos (podríamos descargar el epub para ser más precisos, 
+        # pero para la preview rápida usamos lo que tenemos o hacemos un fetch rápido si es crítico)
+        # Por rapidez, usamos datos básicos y el link.
+        
+        caption = (
+            f"📚 <b>{title}</b>\n\n"
+            f"⬇️ <b>Descarga directa:</b>\n"
+            f"{public_link}\n\n"
+            f"#Libros #Epub #Lectura"
+        )
+        
+        return {
+            "caption": caption,
+            "cover_url": cover_url,
+            "public_link": public_link
+        }
+
+    except Exception as e:
+        logger.error(f"Error preparing FB post: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/facebook/publish")
+async def publish_facebook_post(
+    request: Request,
+    current_uid: int = Depends(get_current_user)
+):
+    """
+    Publica en el grupo de Facebook configurado.
+    """
+    if current_uid not in config.FACEBOOK_PUBLISHERS:
+        raise HTTPException(status_code=403, detail="Not authorized")
+        
+    if not config.FACEBOOK_PAGE_ACCESS_TOKEN or not config.FACEBOOK_GROUP_ID:
+         raise HTTPException(status_code=400, detail="Facebook credentials not configured")
+
+    try:
+        data = await request.json()
+        caption = data.get('caption')
+        cover_url = data.get('cover_url') # URL de la portada (debe ser pública para que FB la vea, o subimos bytes)
+        
+        # Nota: Para subir foto a FB, se puede pasar URL si es pública. 
+        # Si nuestra URL de portada es local/proxy, FB podría no verla si no es pública real.
+        # Asumimos que cover_url es accesible o usamos el proxy de imagen si es público.
+        
+        # Si la cover_url es relativa o interna, intentar resolverla
+        if cover_url and not cover_url.startswith("http"):
+             cover_url = f"{config.BASE_URL}{cover_url}"
+
+        # Lógica de publicación en Graph API
+        url = f"https://graph.facebook.com/{config.FACEBOOK_GROUP_ID}/photos"
+        params = {
+            "url": cover_url,
+            "caption": caption.replace("<b>", "").replace("</b>", ""), # FB no soporta HTML tags básicos así
+            "access_token": config.FACEBOOK_PAGE_ACCESS_TOKEN
+        }
+        
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(url, params=params, timeout=30)
+            resp.raise_for_status()
+            fb_data = resp.json()
+            
+        return {"success": True, "fb_id": fb_data.get("id")}
+
+    except Exception as e:
+        logger.error(f"Error publishing to FB: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/config")
 async def get_config(current_uid: int = Depends(get_current_user)):
     """
     Retorna configuración inicial para la Mini App, incluyendo permisos de admin.
     """
     is_admin = current_uid in config.ADMIN_USERS
+    is_publisher = current_uid in config.FACEBOOK_PUBLISHERS
     
     response = {
         "is_admin": is_admin,
+        "is_facebook_publisher": is_publisher,
         "admin_root_url": config.OPDS_ROOT_EVIL if is_admin else None,
         "destinations": []
     }
