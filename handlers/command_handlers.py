@@ -34,6 +34,8 @@ class CommandHandlers:
         # Registrar /backup_db y /restore_db (publishers only)
         app.add_handler(CommandHandler("backup_db", self.backup_db))
         app.add_handler(CommandHandler("restore_db", self.restore_db))
+        # Registrar /export_db (publishers only)
+        app.add_handler(CommandHandler("export_db", self.export_db))
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /start: inicializa estado; admin->evil, otros->normal."""
@@ -738,4 +740,81 @@ class CommandHandlers:
                 chat_id=update.effective_chat.id,
                 message_id=msg.message_id,
                 text=f"❌ Error al restaurar backup: {str(e)}"
+            )
+
+    async def export_db(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Exporta la base de datos a CSV (solo publishers)."""
+        uid = update.effective_user.id
+        if uid not in config.FACEBOOK_PUBLISHERS:
+            await update.message.reply_text("⛔ No tienes permisos para usar este comando.")
+            return
+
+        thread_id = get_thread_id(update)
+        msg = await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="⏳ Generando CSV de la base de datos...",
+            message_thread_id=thread_id
+        )
+        
+        try:
+            import csv
+            from datetime import datetime
+            
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"export_db_{timestamp}.csv"
+            
+            # Determinar si usar PostgreSQL o SQLite
+            if config.DATABASE_URL:
+                # PostgreSQL usando SQLAlchemy
+                from sqlalchemy import create_engine, text
+                engine = create_engine(config.DATABASE_URL)
+                
+                with engine.connect() as conn:
+                    result = conn.execute(text("SELECT * FROM url_mappings ORDER BY created_at DESC"))
+                    rows = result.fetchall()
+                    columns = result.keys()
+                
+                # Escribir CSV
+                with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
+                    writer = csv.writer(csvfile)
+                    writer.writerow(columns)  # Header
+                    writer.writerows(rows)
+                    
+            else:
+                # SQLite
+                import sqlite3
+                from utils.url_cache import DB_PATH
+                
+                conn = sqlite3.connect(DB_PATH)
+                cursor = conn.cursor()
+                cursor.execute("SELECT * FROM url_mappings ORDER BY created_at DESC")
+                rows = cursor.fetchall()
+                columns = [description[0] for description in cursor.description]
+                conn.close()
+                
+                # Escribir CSV
+                with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
+                    writer = csv.writer(csvfile)
+                    writer.writerow(columns)  # Header
+                    writer.writerows(rows)
+            
+            # Enviar archivo
+            await context.bot.send_document(
+                chat_id=update.effective_chat.id,
+                document=open(filename, "rb"),
+                filename=filename,
+                caption=f"📊 Exportación de base de datos\n📅 {timestamp}\n📦 {len(rows)} registros",
+                message_thread_id=thread_id
+            )
+            
+            # Limpiar
+            os.remove(filename)
+            await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=msg.message_id)
+            
+        except Exception as e:
+            logger.error(f"Error en export_db: {e}", exc_info=True)
+            await context.bot.edit_message_text(
+                chat_id=update.effective_chat.id,
+                message_id=msg.message_id,
+                text=f"❌ Error al generar CSV: {str(e)}"
             )
