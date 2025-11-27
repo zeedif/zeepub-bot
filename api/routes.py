@@ -353,8 +353,13 @@ async def publish_facebook_post(
     if current_uid not in config.FACEBOOK_PUBLISHERS:
         raise HTTPException(status_code=403, detail="Not authorized")
         
-    if not config.FACEBOOK_PAGE_ACCESS_TOKEN or not config.FACEBOOK_GROUP_ID:
-         raise HTTPException(status_code=400, detail="Facebook credentials not configured")
+    from utils.helpers import validate_facebook_credentials
+    is_valid, error_msg = validate_facebook_credentials(config)
+    
+    if not is_valid:
+         # Strip HTML for API error detail
+         clean_msg = error_msg.replace("<b>", "").replace("</b>", "").replace("<code>", "").replace("</code>", "")
+         raise HTTPException(status_code=400, detail=clean_msg)
 
     try:
         data = await request.json()

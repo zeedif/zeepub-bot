@@ -305,3 +305,33 @@ def formatear_titulo_fb(meta: dict) -> str:
 
 def escapar_html(texto: str) -> str:
     return html.escape(texto) if texto else ""
+
+def validate_facebook_credentials(config_obj) -> tuple[bool, str]:
+    """
+    Valida si las credenciales de Facebook están configuradas y no son placeholders.
+    Retorna (True, "") si todo está bien.
+    Retorna (False, mensaje_error) si falta algo o es inválido.
+    """
+    missing = []
+    
+    # Check Token
+    token = config_obj.FACEBOOK_PAGE_ACCESS_TOKEN
+    if not token or "your_token" in token or "token_falso" in token:
+        missing.append("FACEBOOK_PAGE_ACCESS_TOKEN")
+        
+    # Check Group ID
+    group_id = config_obj.FACEBOOK_GROUP_ID
+    # "id_del_grupo" es el placeholder que causó el error 400
+    if not group_id or "id_del_grupo" in group_id or "your_group_id" in group_id:
+        missing.append("FACEBOOK_GROUP_ID")
+        
+    if missing:
+        msg = (
+            "⚠️ <b>Configuración inválida</b>\n\n"
+            "No se puede publicar en Facebook porque las siguientes credenciales faltan o tienen valores por defecto (placeholders):\n"
+            f"<code>{', '.join(missing)}</code>\n\n"
+            "Por favor, ponte en contacto con un admin para que active el envío a Facebook."
+        )
+        return False, msg
+        
+    return True, ""

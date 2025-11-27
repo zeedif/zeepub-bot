@@ -487,8 +487,11 @@ async def enviar_libro_directo(bot, user_id: int, title: str, download_url: str,
                 
             elif format_type == "fb_direct":
                 # Publicar en FB
-                if not config.FACEBOOK_PAGE_ACCESS_TOKEN or not config.FACEBOOK_GROUP_ID:
-                    await bot.send_message(chat_id=user_id, text="❌ Credenciales de Facebook no configuradas.")
+                from utils.helpers import validate_facebook_credentials
+                is_valid, error_msg = validate_facebook_credentials(config)
+                
+                if not is_valid:
+                    await bot.send_message(chat_id=user_id, text=error_msg, parse_mode="HTML")
                     return False
                     
                 import httpx
@@ -694,8 +697,16 @@ async def preparar_post_facebook(update, context: ContextTypes.DEFAULT_TYPE, uid
     
     # Enviar vista previa (caption) — la portada puede haber sido enviada previamente por quien inició publish FB
     btns = []
-    if config.FACEBOOK_PAGE_ACCESS_TOKEN and config.FACEBOOK_GROUP_ID:
-        btns.append([InlineKeyboardButton("🚀 Publicar ahora", callback_data="publicar_fb")])
+    
+    # Check credentials before showing button? Or check on click?
+    # User asked to check on publish. But checking here is also good UX.
+    # Let's keep the button but validate on click as requested.
+    # The user request was "al momento de publicar... revise". So we can leave the button if we want,
+    # but the current code hides it if tokens are missing.
+    # Let's show it so they can click and get the error message?
+    # "si no los tiene mande un mensaje avisando de eso".
+    # So we should probably show the button to allow the interaction and then the error.
+    btns.append([InlineKeyboardButton("🚀 Publicar ahora", callback_data="publicar_fb")])
     
     btns.append([
         InlineKeyboardButton("🗑️ Descartar", callback_data="descartar_fb"),
@@ -894,6 +905,15 @@ async def publicar_facebook_action(update, context: ContextTypes.DEFAULT_TYPE, u
     """Publica el post en Facebook."""
     bot = context.bot
     user_state = state_manager.get_user_state(uid)
+    
+    # Validar credenciales antes de proceder
+    from utils.helpers import validate_facebook_credentials
+    is_valid, error_msg = validate_facebook_credentials(config)
+    
+    if not is_valid:
+        await bot.send_message(chat_id=uid, text=error_msg, parse_mode="HTML")
+        return
+
     caption = user_state.get("fb_caption")
     
     if not caption:
