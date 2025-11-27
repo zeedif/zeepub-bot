@@ -314,12 +314,18 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         # If the user is an admin+publisher, choose subsequent behavior now:
-        # - If they picked 'telegram' we show the Evil destination selector.
+        # - If they picked 'telegram' we configure Evil root and show the destination selector.
         # - If they picked 'facebook' assume "aquí" and enter Evil root directly
         #   (publisher flow will create FB preview on selection). Non-admin
         #   publishers continue to the normal start flow.
         if uid in config.ADMIN_USERS:
             if choice == "telegram":
+                # Configure Evil root BEFORE showing destination selector
+                st["opds_root"] = config.OPDS_ROOT_EVIL
+                st["opds_root_base"] = config.OPDS_ROOT_EVIL
+                st["historial"] = []
+                st["ultima_pagina"] = config.OPDS_ROOT_EVIL
+                
                 keyboard = [
                     [InlineKeyboardButton("📍 Aquí", callback_data="destino|aqui")],
                     [InlineKeyboardButton("📣 BotTest", callback_data="destino|@ZeePubBotTest")],

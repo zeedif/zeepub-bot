@@ -152,6 +152,13 @@ async def publicar_libro(update, context: ContextTypes.DEFAULT_TYPE,
 
         logger.debug("publicar_libro called uid=%s titulo=%r destino=%s chat_origen=%s", uid, titulo, destino, chat_origen)
 
+        # Borrar mensaje "Preparando..." si existe
+        if menu_prep:
+            try:
+                await bot.delete_message(chat_id=menu_prep[0], message_id=menu_prep[1])
+            except Exception as e:
+                logger.debug("No se pudo borrar mensaje 'Preparando...': %s", e)
+
         # For publishers the choice is asked earlier; just continue publishing normally
 
         # Dentro de publicar_libro, donde quieras enviar portada:
@@ -238,10 +245,11 @@ async def publicar_libro(update, context: ContextTypes.DEFAULT_TYPE,
             user_state["msg_info_id"] = msg_info.message_id
 
         keyboard = [
-            [InlineKeyboardButton("📥 Descargar EPUB", callback_data="descargar_epub")],
+            [
+                InlineKeyboardButton("📥 Descargar", callback_data="descargar_epub"),
+                InlineKeyboardButton("↩️ Volver", callback_data="volver_ultima")
+            ],
         ]
-            
-        keyboard.append([InlineKeyboardButton("↩️ Volver", callback_data="volver_ultima")])
 
         sent = await bot.send_message(
             chat_id=chat_origen,
@@ -580,7 +588,10 @@ async def preparar_post_facebook(update, context: ContextTypes.DEFAULT_TYPE, uid
     if config.FACEBOOK_PAGE_ACCESS_TOKEN and config.FACEBOOK_GROUP_ID:
         btns.append([InlineKeyboardButton("🚀 Publicar ahora", callback_data="publicar_fb")])
     
-    btns.append([InlineKeyboardButton("🗑️ Descartar", callback_data="descartar_fb")])
+    btns.append([
+        InlineKeyboardButton("🗑️ Descartar", callback_data="descartar_fb"),
+        InlineKeyboardButton("↩️ Volver", callback_data="volver_ultima")
+    ])
     
     logger.debug("preparar_post_facebook: uid=%s preview_chat=%s thread=%s meta_title=%r", uid, user_state.get('publish_command_origin'), user_state.get('publish_command_thread_id'), titulo)
 
@@ -606,6 +617,14 @@ async def _publish_choice_facebook(update, context: ContextTypes.DEFAULT_TYPE, u
     st.pop("awaiting_publish_target", None)
 
     logger.debug("_publish_choice_facebook: handling for uid=%s pending=%s", uid, st.get('pending_pub_book'))
+
+    # Borrar mensaje "Preparando..." si existe
+    menu_prep = st.pop("pending_pub_menu_prep", None)
+    if menu_prep:
+        try:
+            await bot.delete_message(chat_id=menu_prep[0], message_id=menu_prep[1])
+        except Exception as e:
+            logger.debug("No se pudo borrar mensaje 'Preparando...' (FB): %s", e)
 
     # If we have a pending_pub_book (set at selection), use it; otherwise rely on meta_pendiente
     pending = st.pop("pending_pub_book", None)

@@ -144,7 +144,7 @@ def generar_slug_from_meta(meta: dict) -> str:
     base_titulo = re.sub(r"\[.*?\]", "", base_titulo)
     base_titulo = base_titulo.split("-", 1)[0].strip()
     base_titulo = base_titulo.replace(",", " ")
-    for ch in ("'", "’", "#", "・"):
+    for ch in ("'", "’", "#", "・","+"):
         base_titulo = base_titulo.replace(ch, "")
     base_titulo = re.sub(r"\s+", " ", base_titulo).strip()
     slug = base_titulo.replace(" ", "_")
