@@ -390,10 +390,12 @@ async def descargar_epub_pendiente(update, context: ContextTypes.DEFAULT_TYPE, u
     )
 
 
-async def enviar_libro_directo(bot, user_id: int, title: str, download_url: str, cover_url: str = None, target_chat_id: int = None):
+async def enviar_libro_directo(bot, user_id: int, title: str, download_url: str, cover_url: str = None, target_chat_id: int = None, format_type: str = "standard"):
     """
     Descarga y envía un libro directamente al usuario (para la Mini App).
     Replica el formato del bot: Portada -> Sinopsis -> Archivo.
+    
+    format_type: "standard", "fb_preview", "fb_direct"
     """
     try:
         # 1. Verificar límite
@@ -402,7 +404,7 @@ async def enviar_libro_directo(bot, user_id: int, title: str, download_url: str,
             return False
 
         # 2. Mensaje de preparación (siempre al usuario que interactúa)
-        prep_msg = await bot.send_message(chat_id=user_id, text=f"⏳ Procesando descarga de: {title}...")
+        prep_msg = await bot.send_message(chat_id=user_id, text=f"⏳ Procesando: {title}...")
 
         # Destino final del libro
         destino = target_chat_id if target_chat_id else user_id
@@ -419,57 +421,164 @@ async def enviar_libro_directo(bot, user_id: int, title: str, download_url: str,
         from services.epub_service import enrich_metadata_from_epub
         meta = await enrich_metadata_from_epub(epub_bytes, download_url, meta)
 
-        # 5. Enviar Portada
-        # Intentar extraer del EPUB primero
+        # 5. Preparar Portada
         cover_bytes = extract_cover_from_epub(epub_bytes)
         portada_data = cover_bytes if cover_bytes else (await fetch_bytes(cover_url) if cover_url else None)
         
-        if portada_data:
-            mensaje_portada = formatear_mensaje_portada(meta)
-            await send_photo_bytes(bot, destino, mensaje_portada, portada_data, filename="cover.jpg", parse_mode="HTML")
-            if not cover_bytes: # Si bajamos la portada de URL, limpiar si fuera archivo temporal (fetch_bytes devuelve bytes, asi que no aplica cleanup_tmp igual que archivo)
-                pass 
+        # --- LOGICA FACEBOOK ---
+        if format_type in ["fb_preview", "fb_direct"]:
+            # Generar caption FB
+            # Construir link público acortado
+            from utils.url_cache import create_short_url
+            
+            dl_domain = config.DL_DOMAIN.rstrip('/')
+            if not dl_domain.startswith("http"):
+                dl_domain = f"https://{dl_domain}"
+            
+            try:
+                url_hash = create_short_url(download_url, book_title=title)
+                public_link = f"{dl_domain}/api/dl/{url_hash}"
+            except Exception as e:
+                logger.error("Error creating short URL: %s", e)
+                public_link = download_url # Fallback
 
-        # 6. Enviar Sinopsis
-        sinopsis = meta.get("sinopsis")
-        if sinopsis:
-            sinopsis_esc = escapar_html(sinopsis)
-            texto = f"<b>Sinopsis:</b>\n<blockquote>{sinopsis_esc}</blockquote>\n#{generar_slug_from_meta(meta)}"
-            await bot.send_message(chat_id=destino, text=texto, parse_mode="HTML")
+            # Caption Base (sin slug)
+            full_caption = f"<b>Vista Previa Facebook:</b>\n\n" if format_type == "fb_preview" else ""
+            full_caption += formatear_mensaje_portada(meta, include_slug=False).rstrip()
+            
+            # Sinopsis
+            sinopsis = meta.get("sinopsis")
+            if sinopsis:
+                sinopsis_esc = escapar_html(sinopsis)
+                full_caption = f"{full_caption}\n\n<b>Sinopsis:</b>\n{sinopsis_esc}".rstrip()
+                
+            # Info archivo
+            if isinstance(epub_bytes, (bytes, bytearray)):
+                size_mb = len(epub_bytes) / (1024 * 1024)
+            elif isinstance(epub_bytes, str) and os.path.exists(epub_bytes):
+                size_mb = os.path.getsize(epub_bytes) / (1024 * 1024)
+            else:
+                size_mb = 0.0
+                
+            version = meta.get("epub_version", "2.0")
+            fecha_mod = meta.get("fecha_modificacion", "Desconocida")
+            
+            fb_caption = (
+                f"{full_caption}\n\n"
+                f"ℹ️ Versión Epub: {version}\n"
+                f"📅 Actualizado: {fecha_mod}\n"
+                f"📦 Tamaño: {size_mb:.2f} MB\n\n"
+                f"⬇️ Descarga: {public_link}"
+            )
+            
+            if format_type == "fb_preview":
+                # Enviar Portada y Caption al usuario
+                if portada_data:
+                    # Enviar portada sola primero? O con caption?
+                    # User request: "mensaje que se enviara al char priavdo sera la vista previa facebbok (inluyendo la portada antes del mensaje principal)"
+                    # Esto suena a: Foto con caption, o Foto y luego Texto.
+                    # El bot actual suele enviar Foto con caption corto, y luego Texto largo.
+                    # Pero para FB preview, mejor todo en uno si cabe, o separado.
+                    # Telegram caption limit is 1024 chars. FB posts can be longer.
+                    # Vamos a intentar enviar Foto sin caption (o titulo) y luego el texto completo.
+                    await send_photo_bytes(bot, user_id, None, portada_data, filename="cover.jpg")
+                    
+                await bot.send_message(chat_id=user_id, text=fb_caption, parse_mode="HTML", disable_web_page_preview=False)
+                
+            elif format_type == "fb_direct":
+                # Publicar en FB
+                if not config.FACEBOOK_PAGE_ACCESS_TOKEN or not config.FACEBOOK_GROUP_ID:
+                    await bot.send_message(chat_id=user_id, text="❌ Credenciales de Facebook no configuradas.")
+                    return False
+                    
+                import httpx
+                
+                # Necesitamos una URL pública para la imagen si usamos 'url' param en FB API.
+                # O subir como multipart/form-data.
+                # La API actual usa 'url' param.
+                # Si tenemos cover_url y es http, usamos esa.
+                # Si no, tendríamos que subir bytes. La implementación actual de /api/facebook/publish usa 'url'.
+                # Vamos a intentar usar cover_url si existe.
+                
+                fb_cover_url = cover_url
+                if not fb_cover_url and portada_data:
+                    # Si tenemos bytes pero no URL pública, es un problema para la API simple de 'url'.
+                    # Podríamos subir bytes a FB, pero requiere cambiar la lógica de publicación.
+                    # Por ahora, si no hay URL pública, avisamos.
+                    # OJO: extract_cover_from_epub devuelve bytes.
+                    pass
 
-        # 7. Enviar Archivo EPUB
-        # Calcular tamaño
-        if isinstance(epub_bytes, (bytes, bytearray)):
-            size_mb = len(epub_bytes) / (1024 * 1024)
-        elif isinstance(epub_bytes, str) and os.path.exists(epub_bytes):
-            size_mb = os.path.getsize(epub_bytes) / (1024 * 1024)
+                if not fb_cover_url or not fb_cover_url.startswith("http"):
+                     # Fallback: intentar usar la URL de la portada del feed si existe en meta
+                     fb_cover_url = meta.get("portada")
+                
+                if not fb_cover_url or not fb_cover_url.startswith("http"):
+                    await bot.send_message(chat_id=user_id, text="⚠️ No se pudo obtener una URL pública para la portada. Facebook requiere una URL pública.")
+                    return False
+
+                url = f"https://graph.facebook.com/{config.FACEBOOK_GROUP_ID}/photos"
+                params = {
+                    "url": fb_cover_url,
+                    "caption": fb_caption.replace("<b>", "").replace("</b>", ""), # Strip HTML
+                    "access_token": config.FACEBOOK_PAGE_ACCESS_TOKEN
+                }
+                
+                async with httpx.AsyncClient() as client:
+                    resp = await client.post(url, params=params, timeout=30)
+                    if resp.status_code != 200:
+                        logger.error(f"FB Error: {resp.text}")
+                        await bot.send_message(chat_id=user_id, text=f"❌ Error publicando en Facebook: {resp.text}")
+                        return False
+                    
+                await bot.send_message(chat_id=user_id, text="✅ Publicado exitosamente en el Grupo de Facebook.")
+
+        # --- LOGICA ESTANDAR ---
         else:
-            size_mb = 0.0
-        version = meta.get("epub_version", "2.0")
-        fecha = meta.get("fecha_modificacion", "Desconocida")
-        titulo_vol = meta.get("titulo_volumen") or meta.get("titulo") or title
-        
-        caption = (
-            f"📂 <b>{titulo_vol}</b>\n"
-            f"ℹ️ Versión Epub: {version}\n"
-            f"📅 Actualizado: {fecha}\n"
-            f"📦 Tamaño: {size_mb:.2f} MB"
-        )
-        
-        slug = generar_slug_from_meta(meta)
-        if slug:
-            caption += f"\n#{slug}"
+            # 5. Enviar Portada (Standard)
+            if portada_data:
+                mensaje_portada = formatear_mensaje_portada(meta)
+                await send_photo_bytes(bot, destino, mensaje_portada, portada_data, filename="cover.jpg", parse_mode="HTML")
 
-        # Nombre de archivo desde URL (igual que en descargar_epub_pendiente)
-        fname = unquote(urlparse(download_url).path.split("/")[-1]) or "archivo.epub"
-        
-        await send_doc_bytes(bot, destino, caption, epub_bytes, filename=fname, parse_mode="HTML")
+            # 6. Enviar Sinopsis
+            sinopsis = meta.get("sinopsis")
+            if sinopsis:
+                sinopsis_esc = escapar_html(sinopsis)
+                texto = f"<b>Sinopsis:</b>\n<blockquote>{sinopsis_esc}</blockquote>\n#{generar_slug_from_meta(meta)}"
+                await bot.send_message(chat_id=destino, text=texto, parse_mode="HTML")
 
-        # 8. Registrar descarga y notificar
-        record_download(user_id)
-        restantes = downloads_left(user_id)
-        if restantes != "ilimitadas":
-            await bot.send_message(chat_id=user_id, text=f"📥 Te quedan {restantes} descargas disponibles para hoy.")
+            # 7. Enviar Archivo EPUB
+            # Calcular tamaño
+            if isinstance(epub_bytes, (bytes, bytearray)):
+                size_mb = len(epub_bytes) / (1024 * 1024)
+            elif isinstance(epub_bytes, str) and os.path.exists(epub_bytes):
+                size_mb = os.path.getsize(epub_bytes) / (1024 * 1024)
+            else:
+                size_mb = 0.0
+            version = meta.get("epub_version", "2.0")
+            fecha = meta.get("fecha_modificacion", "Desconocida")
+            titulo_vol = meta.get("titulo_volumen") or meta.get("titulo") or title
+            
+            caption = (
+                f"📂 <b>{titulo_vol}</b>\n"
+                f"ℹ️ Versión Epub: {version}\n"
+                f"📅 Actualizado: {fecha}\n"
+                f"📦 Tamaño: {size_mb:.2f} MB"
+            )
+            
+            slug = generar_slug_from_meta(meta)
+            if slug:
+                caption += f"\n#{slug}"
+
+            # Nombre de archivo desde URL
+            fname = unquote(urlparse(download_url).path.split("/")[-1]) or "archivo.epub"
+            
+            await send_doc_bytes(bot, destino, caption, epub_bytes, filename=fname, parse_mode="HTML")
+
+            # 8. Registrar descarga y notificar
+            record_download(user_id)
+            restantes = downloads_left(user_id)
+            if restantes != "ilimitadas":
+                await bot.send_message(chat_id=user_id, text=f"📥 Te quedan {restantes} descargas disponibles para hoy.")
 
         # Limpieza
         try:

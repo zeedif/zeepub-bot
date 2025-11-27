@@ -391,7 +391,7 @@ async def publish_facebook_post(
 @router.get("/config")
 async def get_config(current_uid: int = Depends(get_current_user)):
     """
-    Retorna configuración inicial para la Mini App, incluyendo permisos de admin.
+    Retorna configuración inicial para la Mini App, incluyendo permisos de admin y publisher.
     """
     is_admin = current_uid in config.ADMIN_USERS
     is_publisher = current_uid in config.FACEBOOK_PUBLISHERS
@@ -403,13 +403,29 @@ async def get_config(current_uid: int = Depends(get_current_user)):
         "destinations": []
     }
     
+    # Definir destinos según roles
+    destinations = []
+    
+    # 1. Opción "Aquí" (Privado)
+    if is_publisher:
+        # Publishers (sean admins o no) ven la vista previa de FB
+        destinations.append({"name": "📍 Aquí (Vista Previa FB)", "id": "me_fb_preview"})
+    elif is_admin:
+        # Admins puros ven la descarga normal
+        destinations.append({"name": "📍 Aquí (Chat privado)", "id": "me"})
+        
+    # 2. Canales de Admin
     if is_admin:
-        # Destinos predefinidos para admins
-        response["destinations"] = [
-            {"name": "📍 Aquí (Chat privado)", "id": "me"},
+        destinations.extend([
             {"name": "📣 ZeePubs Channel", "id": "@ZeePubs"},
             {"name": "🤖 ZeePub Bot Test", "id": "@ZeePubBotTest"}
-        ]
+        ])
+        
+    # 3. Grupos de Publisher
+    if is_publisher:
+        destinations.append({"name": "👥 Grupo de Facebook", "id": "facebook_group"})
+        
+    response["destinations"] = destinations
         
     return response
 
@@ -429,30 +445,43 @@ async def download_book(
         target_chat_id = data.get('target_chat_id')
         
         # Validar que el usuario autenticado coincida con el solicitado (o simplemente usar el autenticado)
-        # Aquí forzamos el uso del usuario autenticado para mayor seguridad
         user_id = current_uid
         
         if not download_url or not user_id:
             raise HTTPException(status_code=400, detail="Missing required fields or authentication")
         
-        logger.info(f"Download request from user {user_id}: {title}")
+        logger.info(f"Download request from user {user_id}: {title} -> {target_chat_id}")
         
         from api.main import bot
         from services.telegram_service import enviar_libro_directo
         
+        # Determinar formato y destino real
+        format_type = "standard"
+        real_target = target_chat_id
+        
+        if target_chat_id == "me_fb_preview":
+            format_type = "fb_preview"
+            real_target = user_id # Enviar al usuario
+        elif target_chat_id == "facebook_group":
+            format_type = "fb_direct"
+            real_target = None # Se maneja internamente con config
+        elif target_chat_id == "me":
+            real_target = user_id
+            
         success = await enviar_libro_directo(
             bot.app.bot,
             user_id=user_id,
             title=title,
             download_url=download_url,
             cover_url=cover_url,
-            target_chat_id=target_chat_id
+            target_chat_id=real_target,
+            format_type=format_type
         )
         
         if success:
-            return {"status": "success", "message": "Download completed"}
+            return {"status": "success", "message": "Operation completed"}
         else:
-            raise HTTPException(status_code=500, detail="Download failed")
+            raise HTTPException(status_code=500, detail="Operation failed")
             
     except Exception as e:
         logger.error(f"Error in download endpoint: {e}", exc_info=True)

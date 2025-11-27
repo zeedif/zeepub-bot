@@ -49,9 +49,13 @@ function App() {
     const init = async () => {
       const uid = WebApp.initDataUnsafe?.user?.id;
       const config = await fetchConfig(uid);
+
+      if (config) {
+        setAdminConfig(config);
+      }
+
       if (config && config.is_admin) {
         setIsAdmin(true);
-        setAdminConfig(config);
         // Default destination to "me" (null in backend logic implies user_id, but we can be explicit if needed)
         // config.destinations[0] should be "Aquí"
         if (config.destinations && config.destinations.length > 0) {
@@ -60,6 +64,10 @@ function App() {
       }
       if (config && config.is_facebook_publisher) {
         setIsFacebookPublisher(true);
+        // If not admin but publisher, also set default destination if available
+        if (!config.is_admin && config.destinations && config.destinations.length > 0) {
+          setSelectedDestination(config.destinations[0].id);
+        }
       }
       loadFeed();
     };
@@ -313,10 +321,10 @@ function App() {
         <SearchBar onSearch={debouncedSearch} />
 
         {/* Admin Controls */}
-        {isAdmin && (
+        {(isAdmin || isFacebookPublisher) && (
           <div className="mt-3 p-2 bg-blue-800/50 rounded-lg text-sm flex flex-col gap-2">
             <div className="flex items-center justify-between">
-              <span className="font-bold text-yellow-300">Modo Admin</span>
+              <span className="font-bold text-yellow-300">Modo Avanzado</span>
               <button
                 onClick={() => {
                   const newMode = !adminMode;
@@ -338,7 +346,7 @@ function App() {
                 }}
                 className={`px-3 py-1 rounded-full text-xs font-bold transition-colors ${adminMode ? 'bg-red-500 text-white' : 'bg-gray-600 text-gray-300'}`}
               >
-                {adminMode ? 'EVIL MODE ON' : 'Normal Mode'}
+                {adminMode ? 'ACTIVADO' : 'DESACTIVADO'}
               </button>
             </div>
 
