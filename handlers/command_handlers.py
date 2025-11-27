@@ -68,9 +68,6 @@ class CommandHandlers:
         # Publishers (ephemeral choice for next book). Admin-only users (not publishers)
         # will be handled separately (go directly to Evil). For users that are both
         # admin+publisher we still show the ephemeral choice here.
-        # Publishers (ephemeral choice for next book). Admin-only users (not publishers)
-        # will be handled separately (go directly to Evil). For users that are both
-        # admin+publisher we still show the ephemeral choice here.
         if uid in config.FACEBOOK_PUBLISHERS:
             keyboard = [
                 [InlineKeyboardButton("📨 Publicar en Telegram (próximo libro)", callback_data="set_publish_temp|telegram")],
@@ -102,10 +99,6 @@ class CommandHandlers:
                 st["opds_root_base"] = root
                 st["historial"] = []
                 st["ultima_pagina"] = root
-#           await context.bot.send_message(
-#               chat_id=update.effective_chat.id,
-#               text="✅ Elige destino:"
-#           )
             # Mostrar opciones de destino
             keyboard = [
                 [InlineKeyboardButton("📍 Aquí", callback_data="destino|aqui")],

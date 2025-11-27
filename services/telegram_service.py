@@ -137,35 +137,9 @@ async def publicar_libro(update, context: ContextTypes.DEFAULT_TYPE,
         if epub_url:
             epub_downloaded = await fetch_bytes(epub_url, timeout=120)
             if epub_downloaded:
-                try:
-                    opf_meta = await parse_opf_from_epub(epub_downloaded)
-                    if opf_meta:
-                        if opf_meta.get("autores"):
-                            meta["autores"] = opf_meta["autores"]
-                            meta["autor"] = opf_meta["autores"][0]
-                        for key in ("titulo_serie", "titulo_volumen", "ilustrador",
-                                    "categoria", "publisher", "publisher_url",
-                                    "generos", "demografia", "maquetadores",
-                                    "traductor", "sinopsis", "epub_version",
-                                    "fecha_modificacion", "fecha_publicacion"):
-                            if opf_meta.get(key):
-                                meta[key] = opf_meta[key]
-                except Exception as e:
-                    logger.debug(f"publicar_libro: fallo parse OPF: {e}")
-                
-                # Extraer título interno y nombre de archivo para nuevo formato
-                try:
-                    from services.epub_service import extract_internal_title
-                    internal_title = extract_internal_title(epub_downloaded)
-                    if internal_title:
-                        meta["internal_title"] = internal_title
-                    
-                    # Extraer filename_title del epub_url
-                    from urllib.parse import unquote, urlparse
-                    filename_title = unquote(urlparse(epub_url).path.split("/")[-1]).replace(".epub", "")
-                    meta["filename_title"] = filename_title
-                except Exception as e:
-                    logger.debug(f"publicar_libro: fallo extra metadata: {e}")
+                # Use centralized metadata enrichment
+                from services.epub_service import enrich_metadata_from_epub
+                meta = await enrich_metadata_from_epub(epub_downloaded, epub_url, meta)
                 
                 # Guardar EPUB y metadatos para envío posterior
                 user_state["epub_buffer"] = epub_downloaded
@@ -177,37 +151,6 @@ async def publicar_libro(update, context: ContextTypes.DEFAULT_TYPE,
         user_state["titulo_pendiente"] = titulo
 
         logger.debug("publicar_libro called uid=%s titulo=%r destino=%s chat_origen=%s", uid, titulo, destino, chat_origen)
-
-        # If this function is called directly (not via the callback that already
-        # asks the publish target), and the user is a publisher/admin, prompt
-        # them for where to publish (Telegram or Facebook). This covers flows
-        # where publicar_libro is invoked from elsewhere (e.g., direct commands)
-        # so publishers always get the choice.
-        # If this function is called directly (not via the callback that already
-        # asks the publish target), and the user is a publisher/admin, prompt
-        # them for where to publish (Telegram or Facebook). This covers flows
-        # where publicar_libro is invoked from elsewhere (e.g., direct commands)
-        # so publishers always get the choice.
-        # if (uid in config.FACEBOOK_PUBLISHERS or uid in config.ADMIN_USERS) and not user_state.get("pending_pub_book") and not user_state.get("awaiting_publish_target"):
-        #     logger.debug("publisher/admin detected; prompting publish target for uid=%s", uid)
-        #     user_state["pending_pub_book"] = {"titulo": titulo, "portada": portada_url, "href": epub_url}
-        #     user_state["pending_pub_menu_prep"] = menu_prep
-        #     user_state["publish_command_origin"] = update.effective_chat.id
-        #     user_state["publish_command_thread_id"] = user_state.get("message_thread_id")
-        #     user_state["awaiting_publish_target"] = True
-        #
-        #     keyboard = [
-        #         [InlineKeyboardButton("📨 Publicar en Telegram", callback_data="publish_target|telegram")],
-        #         [InlineKeyboardButton("📝 Publicar en Facebook", callback_data="publish_target|facebook")],
-        #         [InlineKeyboardButton("⛔ Salir", callback_data="publish_target|cancel")]
-        #     ]
-        #     await bot.send_message(
-        #         chat_id=update.effective_chat.id,
-        #         text="🔧 Eres publisher — ¿dónde quieres publicar este EPUB?",
-        #         reply_markup=InlineKeyboardMarkup(keyboard),
-        #         message_thread_id=user_state.get("message_thread_id")
-        #     )
-        #     return
 
         # For publishers the choice is asked earlier; just continue publishing normally
 
@@ -297,11 +240,6 @@ async def publicar_libro(update, context: ContextTypes.DEFAULT_TYPE,
         keyboard = [
             [InlineKeyboardButton("📥 Descargar EPUB", callback_data="descargar_epub")],
         ]
-        
-        # Botón Facebook para publishers
-        # Allow admins to have Facebook publishing controls too
-        # if uid in config.FACEBOOK_PUBLISHERS or uid in config.ADMIN_USERS:
-        #     keyboard.append([InlineKeyboardButton("📝 Post FB", callback_data="preparar_post_fb")])
             
         keyboard.append([InlineKeyboardButton("↩️ Volver", callback_data="volver_ultima")])
 
@@ -469,23 +407,9 @@ async def enviar_libro_directo(bot, user_id: int, title: str, download_url: str,
 
         # 4. Parsear metadatos del EPUB
         meta = {"titulo": title, "epub_version": "2.0", "fecha_modificacion": "Desconocida"}
-        try:
-            opf_meta = await parse_opf_from_epub(epub_bytes)
-            if opf_meta:
-                meta.update(opf_meta)
-                if opf_meta.get("autores"):
-                    meta["autor"] = opf_meta["autores"][0]
-        except Exception as e:
-            logger.error(f"Error parsing OPF in direct download: {e}")
-
-        # Extraer título interno y nombre de archivo para nuevo formato
-        try:
-            from services.epub_service import extract_internal_title
-            internal_title = extract_internal_title(epub_bytes)
-            if internal_title:
-                meta["internal_title"] = internal_title
-        except Exception as e:
-            logger.debug(f"enviar_libro_directo: fallo extra metadata: {e}")
+        # Use centralized metadata enrichment
+        from services.epub_service import enrich_metadata_from_epub
+        meta = await enrich_metadata_from_epub(epub_bytes, download_url, meta)
 
         # 5. Enviar Portada
         # Intentar extraer del EPUB primero
@@ -715,30 +639,10 @@ async def _publish_choice_facebook(update, context: ContextTypes.DEFAULT_TYPE, u
         if epub_downloaded:
             st["epub_buffer"] = epub_downloaded
             epub_buffer = epub_downloaded
-            try:
-                opf_meta = await parse_opf_from_epub(epub_downloaded)
-                if opf_meta:
-                    meta.update(opf_meta)
-                    st["meta_pendiente"] = meta
-            except Exception:
-                pass
-            
-            # Extraer título interno y nombre de archivo para nuevo formato (igual que en publicar_libro)
-            try:
-                from services.epub_service import extract_internal_title
-                internal_title = extract_internal_title(epub_downloaded)
-                if internal_title:
-                    meta["internal_title"] = internal_title
-                
-                # Extraer filename_title del epub_url
-                from urllib.parse import unquote, urlparse
-                filename_title = unquote(urlparse(epub_url).path.split("/")[-1]).replace(".epub", "")
-                meta["filename_title"] = filename_title
-                
-                # Actualizar estado con nuevos metadatos
-                st["meta_pendiente"] = meta
-            except Exception as e:
-                logger.debug(f"_publish_choice_facebook: fallo extra metadata: {e}")
+            # Use centralized metadata enrichment
+            from services.epub_service import enrich_metadata_from_epub
+            meta = await enrich_metadata_from_epub(epub_downloaded, epub_url, meta)
+            st["meta_pendiente"] = meta
 
             if not cover_bytes:
                 try:

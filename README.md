@@ -21,12 +21,18 @@
   - **Frontend**: React (Vite) servido estáticamente.
   - **Infraestructura**: Docker + Cloudflare Tunnel (sin abrir puertos).
   - **Base de Datos**: Soporte para PostgreSQL y SQLite con gestión de URLs acortadas.
+- **Publisher Workflow**:
+  - Menú de selección en `/start` para elegir destino de publicación (Telegram/Facebook).
+  - Preferencia temporal que se aplica al siguiente libro seleccionado.
+  - Publicación directa sin menús de interrupción.
 - **Comandos de Administración** (Solo Publishers):
   - `/backup_db`: Genera y envía un backup completo de la base de datos PostgreSQL.
   - `/restore_db`: Restaura la base de datos desde un archivo .sql.
+  - `/export_db`: Exporta la tabla `url_mappings` a CSV.
   - `/link_list [limit]`: Lista los links acortados más recientes (hasta 50).
   - `/status_links`: Muestra el estado de los últimos 5 links con validación en tiempo real.
   - `/purge_link <hash>`: Elimina un link acortado específico de la base de datos.
+  - `/debug_state`: Muestra el estado actual del usuario (para debugging).
 - **Reportes Automáticos**:
   - Sistema de reportes semanales automáticos cada lunes a las 9:00 AM con estadísticas de links (total, válidos, rotos, tasa de éxito).
   - Los reportes se envían automáticamente a todos los publishers configurados.
@@ -34,9 +40,11 @@
   - Extracción avanzada de metadatos con soporte para `epub:type="fulltitle"`.
   - Formato de título completo: `Serie ║ Colección ║ Título Interno`.
   - Preservación de puntuación y subtítulos multilinea.
+  - Función centralizada de enriquecimiento de metadatos para consistencia.
 - **Integración con Facebook**:
   - Preparación automatizada de posts con formato completo (título, metadata, sinopsis, info del archivo).
   - Publicación directa en grupos de Facebook con un solo clic.
+  - Vista previa correcta del título (sin slug) para Facebook.
 
 ***
 

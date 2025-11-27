@@ -392,3 +392,62 @@ def extract_cover_from_epub(data_or_path: Union[bytes, str]) -> Optional[bytes]:
         return zf.read(real_cover)
     except Exception:
         return None
+
+
+async def enrich_metadata_from_epub(epub_bytes: Union[bytes, str], epub_url: str, existing_meta: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """
+    Centralized metadata enrichment function.
+    
+    Parses OPF metadata, extracts internal title, and extracts filename title from URL.
+    Returns a fully populated metadata dictionary.
+    
+    Args:
+        epub_bytes: EPUB data (bytes or file path)
+        epub_url: URL of the EPUB (for extracting filename)
+        existing_meta: Optional existing metadata to merge with
+    
+    Returns:
+        Enriched metadata dictionary
+    """
+    import logging
+    from urllib.parse import unquote, urlparse
+    
+    logger = logging.getLogger(__name__)
+    meta = existing_meta.copy() if existing_meta else {}
+    
+    try:
+        # Parse OPF metadata
+        opf_meta = await parse_opf_from_epub(epub_bytes)
+        if opf_meta:
+            # Merge OPF metadata, preserving existing autores if present
+            if opf_meta.get("autores"):
+                meta["autores"] = opf_meta["autores"]
+                meta["autor"] = opf_meta["autores"][0]
+            
+            # Merge other OPF fields
+            for key in ("titulo_serie", "titulo_volumen", "ilustrador",
+                        "categoria", "publisher", "publisher_url",
+                        "generos", "demografia", "maquetadores",
+                        "traductor", "sinopsis", "epub_version",
+                        "fecha_modificacion", "fecha_publicacion"):
+                if opf_meta.get(key):
+                    meta[key] = opf_meta[key]
+    except Exception as e:
+        logger.debug(f"enrich_metadata_from_epub: OPF parse failed: {e}")
+    
+    # Extract internal title
+    try:
+        internal_title = extract_internal_title(epub_bytes)
+        if internal_title:
+            meta["internal_title"] = internal_title
+    except Exception as e:
+        logger.debug(f"enrich_metadata_from_epub: internal title extraction failed: {e}")
+    
+    # Extract filename title from URL
+    try:
+        filename_title = unquote(urlparse(epub_url).path.split("/")[-1]).replace(".epub", "")
+        meta["filename_title"] = filename_title
+    except Exception as e:
+        logger.debug(f"enrich_metadata_from_epub: filename extraction failed: {e}")
+    
+    return meta
