@@ -296,12 +296,24 @@ async def publicar_libro(update, context: ContextTypes.DEFAULT_TYPE,
             )
             
             # Enviar mensaje de información separado (siempre en chat_origen con thread_id)
-            msg_info = await bot.send_message(
-                chat_id=chat_origen,
-                text=info_text,
-                parse_mode="HTML",
-                message_thread_id=thread_id_origen
-            )
+            # Enviar mensaje de información separado (siempre en chat_origen con thread_id)
+            try:
+                msg_info = await bot.send_message(
+                    chat_id=chat_origen,
+                    text=info_text,
+                    parse_mode="HTML",
+                    message_thread_id=thread_id_origen
+                )
+            except BadRequest as e:
+                if "Message thread not found" in str(e) and thread_id_origen is not None:
+                    msg_info = await bot.send_message(
+                        chat_id=chat_origen,
+                        text=info_text,
+                        parse_mode="HTML",
+                        message_thread_id=None
+                    )
+                else:
+                    raise e
             user_state["msg_info_id"] = msg_info.message_id
 
         keyboard = [
@@ -311,13 +323,25 @@ async def publicar_libro(update, context: ContextTypes.DEFAULT_TYPE,
             ],
         ]
 
-        sent = await bot.send_message(
-            chat_id=chat_origen,
-            text="¿Deseas descargar este EPUB?",
-            parse_mode="HTML",
-            message_thread_id=thread_id_origen,
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
+        try:
+            sent = await bot.send_message(
+                chat_id=chat_origen,
+                text="¿Deseas descargar este EPUB?",
+                parse_mode="HTML",
+                message_thread_id=thread_id_origen,
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+        except BadRequest as e:
+            if "Message thread not found" in str(e) and thread_id_origen is not None:
+                sent = await bot.send_message(
+                    chat_id=chat_origen,
+                    text="¿Deseas descargar este EPUB?",
+                    parse_mode="HTML",
+                    message_thread_id=None,
+                    reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+            else:
+                raise e
         user_state["msg_botones_id"] = sent.message_id
         user_state["titulo_pendiente"] = titulo
 
