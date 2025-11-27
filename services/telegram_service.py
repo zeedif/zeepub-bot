@@ -5,6 +5,7 @@ import os
 import logging
 from urllib.parse import urlparse, unquote
 from telegram import InputFile, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 from core.state_manager import state_manager
 from core.session_manager import session_manager
@@ -33,7 +34,15 @@ async def send_photo_bytes(bot, chat_id, caption, data_or_path, filename="cover.
             bio.name = filename
             bio.seek(0)
             input_file = InputFile(bio, filename=filename)
-            return await bot.send_photo(chat_id=chat_id, photo=input_file, caption=caption, parse_mode=parse_mode, message_thread_id=message_thread_id)
+            try:
+                return await bot.send_photo(chat_id=chat_id, photo=input_file, caption=caption, parse_mode=parse_mode, message_thread_id=message_thread_id)
+            except BadRequest as e:
+                if "Message thread not found" in str(e) and message_thread_id is not None:
+                    # Retry without thread_id (send to General/Main)
+                    bio.seek(0)
+                    return await bot.send_photo(chat_id=chat_id, photo=input_file, caption=caption, parse_mode=parse_mode, message_thread_id=None)
+                raise e
+
         elif isinstance(data_or_path, str) and os.path.exists(data_or_path):
             # Read image file asynchronously into memory (covers are small)
             try:
@@ -46,12 +55,24 @@ async def send_photo_bytes(bot, chat_id, caption, data_or_path, filename="cover.
                     bio.name = filename
                     bio.seek(0)
                     input_file = InputFile(bio, filename=filename)
-                    return await bot.send_photo(chat_id=chat_id, photo=input_file, caption=caption, parse_mode=parse_mode, message_thread_id=message_thread_id)
+                    try:
+                        return await bot.send_photo(chat_id=chat_id, photo=input_file, caption=caption, parse_mode=parse_mode, message_thread_id=message_thread_id)
+                    except BadRequest as e:
+                        if "Message thread not found" in str(e) and message_thread_id is not None:
+                            bio.seek(0)
+                            return await bot.send_photo(chat_id=chat_id, photo=input_file, caption=caption, parse_mode=parse_mode, message_thread_id=None)
+                        raise e
             except Exception:
                 # Fallback to synchronous open if aiofiles fails
                 with open(data_or_path, 'rb') as f:
                     input_file = InputFile(f, filename=filename)
-                    return await bot.send_photo(chat_id=chat_id, photo=input_file, caption=caption, parse_mode=parse_mode, message_thread_id=message_thread_id)
+                    try:
+                        return await bot.send_photo(chat_id=chat_id, photo=input_file, caption=caption, parse_mode=parse_mode, message_thread_id=message_thread_id)
+                    except BadRequest as e:
+                        if "Message thread not found" in str(e) and message_thread_id is not None:
+                            f.seek(0)
+                            return await bot.send_photo(chat_id=chat_id, photo=input_file, caption=caption, parse_mode=parse_mode, message_thread_id=None)
+                        raise e
     except Exception as e:
         logger.debug(f"Error send_photo_bytes: {e}")
     return None
@@ -67,7 +88,13 @@ async def send_doc_bytes(bot, chat_id, caption, data_or_path, filename="file.epu
             bio.name = filename
             bio.seek(0)
             input_file = InputFile(bio, filename=filename)
-            return await bot.send_document(chat_id=chat_id, document=input_file, caption=caption, parse_mode=parse_mode, message_thread_id=message_thread_id)
+            try:
+                return await bot.send_document(chat_id=chat_id, document=input_file, caption=caption, parse_mode=parse_mode, message_thread_id=message_thread_id)
+            except BadRequest as e:
+                if "Message thread not found" in str(e) and message_thread_id is not None:
+                    bio.seek(0)
+                    return await bot.send_document(chat_id=chat_id, document=input_file, caption=caption, parse_mode=parse_mode, message_thread_id=None)
+                raise e
         elif isinstance(data_or_path, str) and os.path.exists(data_or_path):
             # Decide whether to load to memory or stream from disk
             try:
@@ -86,14 +113,26 @@ async def send_doc_bytes(bot, chat_id, caption, data_or_path, filename="file.epu
                     bio.name = filename
                     bio.seek(0)
                     input_file = InputFile(bio, filename=filename)
-                    return await bot.send_document(chat_id=chat_id, document=input_file, caption=caption, parse_mode=parse_mode, message_thread_id=message_thread_id)
+                    try:
+                        return await bot.send_document(chat_id=chat_id, document=input_file, caption=caption, parse_mode=parse_mode, message_thread_id=message_thread_id)
+                    except BadRequest as e:
+                        if "Message thread not found" in str(e) and message_thread_id is not None:
+                            bio.seek(0)
+                            return await bot.send_document(chat_id=chat_id, document=input_file, caption=caption, parse_mode=parse_mode, message_thread_id=None)
+                        raise e
                 except Exception:
                     pass
 
             # Large file: open synchronously (cheap) and let telegram lib stream it
             with open(data_or_path, 'rb') as f:
                 input_file = InputFile(f, filename=filename)
-                return await bot.send_document(chat_id=chat_id, document=input_file, caption=caption, parse_mode=parse_mode, message_thread_id=message_thread_id)
+                try:
+                    return await bot.send_document(chat_id=chat_id, document=input_file, caption=caption, parse_mode=parse_mode, message_thread_id=message_thread_id)
+                except BadRequest as e:
+                    if "Message thread not found" in str(e) and message_thread_id is not None:
+                        f.seek(0)
+                        return await bot.send_document(chat_id=chat_id, document=input_file, caption=caption, parse_mode=parse_mode, message_thread_id=None)
+                    raise e
     except Exception as e:
         logger.debug(f"Error send_doc_bytes: {e}")
     return None
@@ -198,20 +237,41 @@ async def publicar_libro(update, context: ContextTypes.DEFAULT_TYPE,
         if sinopsis:
             sinopsis_esc = escapar_html(sinopsis)
             texto = f"<b>Sinopsis:</b>\n<blockquote>{sinopsis_esc}</blockquote>\n#{generar_slug_from_meta(meta)}"
-            await bot.send_message(
-                chat_id=destino, 
-                text=texto, 
-                parse_mode="HTML",
-                message_thread_id=thread_id_destino
-            )
+            try:
+                await bot.send_message(
+                    chat_id=destino, 
+                    text=texto, 
+                    parse_mode="HTML",
+                    message_thread_id=thread_id_destino
+                )
+            except BadRequest as e:
+                if "Message thread not found" in str(e) and thread_id_destino is not None:
+                    await bot.send_message(
+                        chat_id=destino, 
+                        text=texto, 
+                        parse_mode="HTML",
+                        message_thread_id=None
+                    )
+                else:
+                    raise e
         else:
             slug = generar_slug_from_meta(meta)
             fallback = f"Sinopsis: (no disponible)\n#{slug}" if slug else "Sinopsis: (no disponible)"
-            await bot.send_message(
-                chat_id=destino, 
-                text=fallback,
-                message_thread_id=thread_id_destino
-            )
+            try:
+                await bot.send_message(
+                    chat_id=destino, 
+                    text=fallback,
+                    message_thread_id=thread_id_destino
+                )
+            except BadRequest as e:
+                if "Message thread not found" in str(e) and thread_id_destino is not None:
+                    await bot.send_message(
+                        chat_id=destino, 
+                        text=fallback,
+                        message_thread_id=None
+                    )
+                else:
+                    raise e
 
         # Mostrar botones
         # Calcular tamaño y versión para el mensaje de confirmación
@@ -868,11 +928,23 @@ async def _publish_choice_telegram(update, context: ContextTypes.DEFAULT_TYPE, u
     if sinopsis:
         sinopsis_esc = escapar_html(sinopsis)
         texto = f"<b>Sinopsis:</b>\n<blockquote>{sinopsis_esc}</blockquote>\n#{generar_slug_from_meta(meta)}"
-        await bot.send_message(chat_id=destino, text=texto, parse_mode="HTML", message_thread_id=thread_id_origen)
+        try:
+            await bot.send_message(chat_id=destino, text=texto, parse_mode="HTML", message_thread_id=thread_id_origen)
+        except BadRequest as e:
+            if "Message thread not found" in str(e) and thread_id_origen is not None:
+                await bot.send_message(chat_id=destino, text=texto, parse_mode="HTML", message_thread_id=None)
+            else:
+                raise e
     else:
         slug = generar_slug_from_meta(meta)
         fallback = f"Sinopsis: (no disponible)\n#{slug}" if slug else "Sinopsis: (no disponible)"
-        await bot.send_message(chat_id=destino, text=fallback, message_thread_id=thread_id_origen)
+        try:
+            await bot.send_message(chat_id=destino, text=fallback, message_thread_id=thread_id_origen)
+        except BadRequest as e:
+            if "Message thread not found" in str(e) and thread_id_origen is not None:
+                await bot.send_message(chat_id=destino, text=fallback, message_thread_id=None)
+            else:
+                raise e
 
     # Info adicional si tenemos EPUB
     if epub_buffer:
@@ -893,7 +965,13 @@ async def _publish_choice_telegram(update, context: ContextTypes.DEFAULT_TYPE, u
             f"📅 Actualizado: {fecha}\n"
             f"📦 Tamaño: {size_mb:.2f} MB"
         )
-        msg_info = await bot.send_message(chat_id=chat_origen, text=info_text, parse_mode="HTML", message_thread_id=thread_id_origen)
+        try:
+            msg_info = await bot.send_message(chat_id=chat_origen, text=info_text, parse_mode="HTML", message_thread_id=thread_id_origen)
+        except BadRequest as e:
+            if "Message thread not found" in str(e) and thread_id_origen is not None:
+                msg_info = await bot.send_message(chat_id=chat_origen, text=info_text, parse_mode="HTML", message_thread_id=None)
+            else:
+                raise e
         st["msg_info_id"] = msg_info.message_id
 
     # Botones: solo descarga y volver (omitimos Post FB porque eligió Telegram)
@@ -902,13 +980,25 @@ async def _publish_choice_telegram(update, context: ContextTypes.DEFAULT_TYPE, u
         [InlineKeyboardButton("↩️ Volver", callback_data="volver_ultima")]
     ]
 
-    sent = await bot.send_message(
-        chat_id=chat_origen,
-        text="¿Deseas descargar este EPUB?",
-        parse_mode="HTML",
-        message_thread_id=thread_id_origen,
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    try:
+        sent = await bot.send_message(
+            chat_id=chat_origen,
+            text="¿Deseas descargar este EPUB?",
+            parse_mode="HTML",
+            message_thread_id=thread_id_origen,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    except BadRequest as e:
+        if "Message thread not found" in str(e) and thread_id_origen is not None:
+            sent = await bot.send_message(
+                chat_id=chat_origen,
+                text="¿Deseas descargar este EPUB?",
+                parse_mode="HTML",
+                message_thread_id=None,
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+        else:
+            raise e
     st["msg_botones_id"] = sent.message_id
 
 async def publicar_facebook_action(update, context: ContextTypes.DEFAULT_TYPE, uid: int):
@@ -948,7 +1038,13 @@ async def publicar_facebook_action(update, context: ContextTypes.DEFAULT_TYPE, u
     # Send progress message in the chat where the preview/button was clicked (origin) if available
     publish_chat = user_state.get("publish_command_origin") or update.effective_chat.id or uid
     publish_thread = user_state.get("publish_command_thread_id")
-    msg = await bot.send_message(chat_id=publish_chat, text="⏳ Publicando en Facebook...", message_thread_id=publish_thread)
+    try:
+        msg = await bot.send_message(chat_id=publish_chat, text="⏳ Publicando en Facebook...", message_thread_id=publish_thread)
+    except BadRequest as e:
+        if "Message thread not found" in str(e) and publish_thread is not None:
+            msg = await bot.send_message(chat_id=publish_chat, text="⏳ Publicando en Facebook...", message_thread_id=None)
+        else:
+            raise e
     
     try:
         url = f"https://graph.facebook.com/{config.FACEBOOK_GROUP_ID}/photos"
