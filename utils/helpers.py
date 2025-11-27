@@ -303,6 +303,52 @@ def formatear_titulo_fb(meta: dict) -> str:
     return "\n".join(line for line in lines if line).strip()
 
 
+def formatear_metadata_fb(meta: dict) -> str:
+    """
+    Genera el bloque de metadatos para Facebook (Maquetado, Categoría, etc.).
+    """
+    lines = []
+    
+    categoria = meta.get("categoria") or "Desconocida"
+    generos = ", ".join(meta.get("generos") or []) or "Desconocido"
+    demografia = ", ".join(meta.get("demografia") or []) or "Desconocida"
+    autor = meta.get("autor") or (meta.get("autores")[0] if meta.get("autores") else "Desconocido")
+    ilustrador = meta.get("ilustrador") or "Desconocido"
+    maqus = meta.get("maquetadores") or []
+    
+    if not maqus:
+        maqu_line = "<b>Maquetado por:</b> #ZeePub"
+    else:
+        maqu_line = "<b>Maquetado por:</b> " + " ".join(f"#{m.replace(' ', '')}" for m in maqus)
+    
+    traduccion_parts = []
+    if meta.get("traductor"):
+        traduccion_parts.append(meta["traductor"])
+    if meta.get("publisher"):
+        traduccion_parts.append(meta["publisher"])
+    if meta.get("publisher_url"):
+        traduccion_parts.append(meta["publisher_url"])
+    traduccion_line = ""
+    if traduccion_parts:
+        traduccion_line = "<b>Traducción:</b> " + " − ".join(traduccion_parts)
+
+    lines.extend([
+        maqu_line,
+        f"<b>Categoría:</b> {categoria}",
+        f"<b>Demografía:</b> {demografia}",
+        f"<b>Géneros:</b> {generos}",
+        f"<b>Autor:</b> {autor}",
+        f"<b>Ilustrador:</b> {ilustrador}",
+    ])
+
+    if meta.get("fecha_publicacion"):
+        lines.append(f"<b>Publicado:</b> {meta['fecha_publicacion']}")
+    if traduccion_line:
+        lines.append(traduccion_line)
+
+    return "\n".join(line for line in lines if line)
+
+
 def escapar_html(texto: str) -> str:
     return html.escape(texto) if texto else ""
 

@@ -430,6 +430,7 @@ async def enviar_libro_directo(bot, user_id: int, title: str, download_url: str,
             # Generar caption FB
             # Construir link público acortado
             from utils.url_cache import create_short_url
+            from utils.helpers import formatear_titulo_fb, formatear_metadata_fb, escapar_html
             
             dl_domain = config.DL_DOMAIN.rstrip('/')
             if not dl_domain.startswith("http"):
@@ -442,17 +443,13 @@ async def enviar_libro_directo(bot, user_id: int, title: str, download_url: str,
                 logger.error("Error creating short URL: %s", e)
                 public_link = download_url # Fallback
 
-            # Caption Base (sin slug)
-            full_caption = f"<b>Vista Previa Facebook:</b>\n\n" if format_type == "fb_preview" else ""
-            full_caption += formatear_mensaje_portada(meta, include_slug=False).rstrip()
+            # 1. Título
+            title_block = formatear_titulo_fb(meta)
             
-            # Sinopsis
-            sinopsis = meta.get("sinopsis")
-            if sinopsis:
-                sinopsis_esc = escapar_html(sinopsis)
-                full_caption = f"{full_caption}\n\n<b>Sinopsis:</b>\n{sinopsis_esc}".rstrip()
-                
-            # Info archivo
+            # 2. Link de descarga
+            link_block = f"⬇️ Descarga: {public_link}"
+            
+            # 3. Info del archivo (Actualizado, Tamaño)
             if isinstance(epub_bytes, (bytes, bytearray)):
                 size_mb = len(epub_bytes) / (1024 * 1024)
             elif isinstance(epub_bytes, str) and os.path.exists(epub_bytes):
@@ -460,16 +457,37 @@ async def enviar_libro_directo(bot, user_id: int, title: str, download_url: str,
             else:
                 size_mb = 0.0
                 
-            version = meta.get("epub_version", "2.0")
             fecha_mod = meta.get("fecha_modificacion", "Desconocida")
             
-            fb_caption = (
-                f"{full_caption}\n\n"
-                f"ℹ️ Versión Epub: {version}\n"
+            epub_info_block = (
                 f"📅 Actualizado: {fecha_mod}\n"
-                f"📦 Tamaño: {size_mb:.2f} MB\n\n"
-                f"⬇️ Descarga: {public_link}"
+                f"📦 Tamaño: {size_mb:.2f} MB"
             )
+            
+            # 4. Metadatos
+            metadata_block = formatear_metadata_fb(meta)
+            
+            # 5. Sinopsis
+            sinopsis = meta.get("sinopsis")
+            sinopsis_block = ""
+            if sinopsis:
+                sinopsis_esc = escapar_html(sinopsis)
+                sinopsis_block = f"<b>Sinopsis:</b>\n{sinopsis_esc}"
+                
+            # Construir caption final
+            parts = []
+            if format_type == "fb_preview":
+                parts.append("<b>Vista Previa Facebook:</b>")
+                
+            parts.extend([
+                title_block,
+                link_block,
+                epub_info_block,
+                metadata_block,
+                sinopsis_block
+            ])
+            
+            fb_caption = "\n\n".join(p for p in parts if p).strip()
             
             if format_type == "fb_preview":
                 # Enviar Portada y Caption al usuario
@@ -613,7 +631,7 @@ async def preparar_post_facebook(update, context: ContextTypes.DEFAULT_TYPE, uid
 
     # Construir link público acortado con SHA256 persistente
     from utils.url_cache import create_short_url
-    from urllib.parse import quote
+    from utils.helpers import formatear_titulo_fb, formatear_metadata_fb, escapar_html
     
     dl_domain = config.DL_DOMAIN.rstrip('/')
     if not dl_domain.startswith("http"):
@@ -629,15 +647,35 @@ async def preparar_post_facebook(update, context: ContextTypes.DEFAULT_TYPE, uid
     public_link = f"{dl_domain}/api/dl/{url_hash}"
     
 
-    # Restaurar formato enriquecido del título (negritas, saltos, etc)
-    # Restaurar formato enriquecido del título (negritas, saltos, etc)
-    # titulo = meta.get("titulo") or titulo
-    # if "internal_title" in meta:
-    #     titulo = f"<b>{meta['internal_title']}</b>"
-    full_caption = f"<b>Vista Previa Facebook:</b>\n\n" + formatear_mensaje_portada(meta, include_slug=False).rstrip()
-
-    # Añadir sinopsis (si está disponible) — la vista previa y la publicación deben
-    # mostrar la sinopsis completa pero sin el slug/hashtag.
+    # 1. Título
+    title_block = formatear_titulo_fb(meta)
+    
+    # 2. Link de descarga
+    link_block = f"⬇️ Descarga: {public_link}"
+    
+    # 3. Info del archivo (Actualizado, Tamaño) - Versión removida según solicitud
+    epub_buffer = user_state.get("epub_buffer")
+    if epub_buffer:
+        if isinstance(epub_buffer, (bytes, bytearray)):
+            size_mb = len(epub_buffer) / (1024 * 1024)
+        elif isinstance(epub_buffer, str) and os.path.exists(epub_buffer):
+            size_mb = os.path.getsize(epub_buffer) / (1024 * 1024)
+        else:
+            size_mb = 0.0
+    else:
+        size_mb = 0.0
+    
+    fecha_mod = meta.get("fecha_modificacion", "Desconocida")
+    
+    epub_info_block = (
+        f"📅 Actualizado: {fecha_mod}\n"
+        f"📦 Tamaño: {size_mb:.2f} MB"
+    )
+    
+    # 4. Metadatos (Maquetado, Categoría, etc.)
+    metadata_block = formatear_metadata_fb(meta)
+    
+    # 5. Sinopsis
     sinopsis = meta.get("sinopsis")
     # Intentar obtener sinopsis desde OPDS si no existe en meta
     if not sinopsis:
@@ -654,58 +692,30 @@ async def preparar_post_facebook(update, context: ContextTypes.DEFAULT_TYPE, uid
             except Exception:
                 sinopsis = None
 
+    sinopsis_block = ""
     if sinopsis:
-        # Mantener HTML seguro para la vista previa pero sin slug
         sinopsis_esc = escapar_html(sinopsis)
-        # asegurarnos de no dejar saltos múltiples: strip final y añadir exactamente 1 separador
-        full_caption = f"{full_caption}\n\n<b>Sinopsis:</b>\n{sinopsis_esc}".rstrip()
-    
-    # Info adicional del archivo
-    epub_buffer = user_state.get("epub_buffer")
-    if epub_buffer:
-        if isinstance(epub_buffer, (bytes, bytearray)):
-            size_mb = len(epub_buffer) / (1024 * 1024)
-        elif isinstance(epub_buffer, str) and os.path.exists(epub_buffer):
-            size_mb = os.path.getsize(epub_buffer) / (1024 * 1024)
-        else:
-            size_mb = 0.0
-    else:
-        size_mb = 0.0
-    
-    version = meta.get("epub_version", "2.0")
-    fecha_mod = meta.get("fecha_modificacion", "Desconocida")
-    
-    # Construir caption con el formato completo + info del archivo + link
-    # Asegurar único separador antes de los metadatos del archivo
-    full_caption = full_caption.rstrip()
+        sinopsis_block = f"<b>Sinopsis:</b>\n{sinopsis_esc}"
 
-    caption = (
-        f"{full_caption}\n\n"
-        f"ℹ️ Versión Epub: {version}\n"
-        f"📅 Actualizado: {fecha_mod}\n"
-        f"📦 Tamaño: {size_mb:.2f} MB\n\n"
-        f"⬇️ Descarga: {public_link}"
-    )
+    # Construir caption final
+    # Orden: Título -> Link -> Info -> Metadata -> Sinopsis
+    parts = [
+        "<b>Vista Previa Facebook:</b>",
+        title_block,
+        link_block,
+        epub_info_block,
+        metadata_block,
+        sinopsis_block
+    ]
+    
+    # Unir partes con doble salto de línea, filtrando vacíos
+    caption = "\n\n".join(p for p in parts if p).strip()
     
     # Guardar en estado para publicación
     user_state["fb_caption"] = caption
-    # La portada ya se envió antes, pero para publicar necesitamos URL o reusar bytes.
-    # Si tenemos bytes en epub_buffer, podemos reusarlos.
-    # Si no, usamos portada_url si existe.
-    # Para simplificar, en la acción de publicar usaremos la URL de portada si es pública,
-    # o re-extraeremos del buffer si es necesario.
     
-    # Enviar vista previa (caption) — la portada puede haber sido enviada previamente por quien inició publish FB
+    # Enviar vista previa (caption)
     btns = []
-    
-    # Check credentials before showing button? Or check on click?
-    # User asked to check on publish. But checking here is also good UX.
-    # Let's keep the button but validate on click as requested.
-    # The user request was "al momento de publicar... revise". So we can leave the button if we want,
-    # but the current code hides it if tokens are missing.
-    # Let's show it so they can click and get the error message?
-    # "si no los tiene mande un mensaje avisando de eso".
-    # So we should probably show the button to allow the interaction and then the error.
     btns.append([InlineKeyboardButton("🚀 Publicar ahora", callback_data="publicar_fb")])
     
     btns.append([
