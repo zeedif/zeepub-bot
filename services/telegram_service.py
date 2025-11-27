@@ -514,7 +514,7 @@ async def enviar_libro_directo(bot, user_id: int, title: str, download_url: str,
             # Generar caption FB
             # Construir link público acortado
             from utils.url_cache import create_short_url
-            from utils.helpers import formatear_titulo_fb, formatear_metadata_fb, escapar_html
+            from utils.helpers import formatear_titulo_fb, formatear_metadata_fb
             
             dl_domain = config.DL_DOMAIN.rstrip('/')
             if not dl_domain.startswith("http"):

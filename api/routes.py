@@ -412,12 +412,13 @@ async def get_config(current_uid: int = Depends(get_current_user)):
     destinations = []
     
     # 1. Opción "Aquí" (Privado)
-    if is_publisher:
-        # Publishers (sean admins o no) ven la vista previa de FB
-        destinations.append({"name": "📍 Aquí (Vista Previa FB)", "id": "me_fb_preview"})
-    elif is_admin:
-        # Admins puros ven la descarga normal
+    # 1. Opción "Aquí" (Privado) - Siempre disponible para admins y publishers
+    if is_admin or is_publisher:
         destinations.append({"name": "📍 Aquí (Chat privado)", "id": "me"})
+        
+    if is_publisher:
+        # Publishers ven TAMBIÉN la vista previa de FB
+        destinations.append({"name": "📍 Aquí (Vista Previa FB)", "id": "me_fb_preview"})
         
     # 2. Canales de Admin
     if is_admin:

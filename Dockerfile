@@ -12,9 +12,15 @@ FROM python:3.12-slim
 WORKDIR /app
 
 # Copiar archivos de requirements y código
+# Copiar archivos de requirements y código
 COPY requirements.txt ./
-RUN apt-get update && apt-get install -y postgresql-client && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y postgresql-client curl && rm -rf /var/lib/apt/lists/*
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Install cloudflared
+RUN curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb && \
+    dpkg -i cloudflared.deb && \
+    rm cloudflared.deb
 
 COPY . .
 
@@ -27,4 +33,5 @@ ENV LOG_LEVEL=INFO
 # Exponer el puerto de la API
 EXPOSE 8000
 
-CMD ["python", "run_with_api.py"]
+RUN chmod +x start.sh
+CMD ["./start.sh"]

@@ -25,6 +25,7 @@ services:
         max-file: "3"
     environment:
       - DATABASE_URL=${DATABASE_URL:-postgresql+psycopg2://zeepub:zeepub@db:5432/zeepub}
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
 
   db:
     image: postgres:15
@@ -37,17 +38,7 @@ services:
     volumes:
       - ./pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-zeepub}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-zeepub}" ]
       interval: 10s
       timeout: 5s
       retries: 5
-
-  tunnel:
-    image: cloudflare/cloudflared:latest
-    container_name: zeepub_tunnel
-    restart: always
-    command: tunnel run
-    environment:
-      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
-    depends_on:
-      - zeepubs_bot

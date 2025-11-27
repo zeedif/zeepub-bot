@@ -9,6 +9,7 @@
 !.github/workflows/
 !.github/workflows/*.yml
 !publish.sh
+!start.sh
 
 # Virtualenvs
 venv/
