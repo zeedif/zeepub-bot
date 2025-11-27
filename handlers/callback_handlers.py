@@ -160,6 +160,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Selección de libro
     if data.startswith("lib|"):
+        # Limpiar estado temporal de libro anterior
+        for k in ("epub_buffer", "meta_pendiente", "portada_pendiente", "titulo_pendiente", "fb_caption"):
+            st.pop(k, None)
         key = data.split("|", 1)[1]
         libro = st["libros"].get(key)
         if not libro:
@@ -186,7 +189,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try:
                 from utils.helpers import get_thread_id
                 thread_id = st.get("message_thread_id")  # Usar el guardado
-                
                 prep = await context.bot.send_message(
                     chat_id=chat_origen,
                     text="⏳ Preparando...",
@@ -196,7 +198,38 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 logger.debug("No se pudo enviar 'Preparando...': %s", e)
 
-        # Publicar EPUB
+        # If user is a publisher/admin, honor their ephemeral publish target if set
+        if uid in config.FACEBOOK_PUBLISHERS or uid in config.ADMIN_USERS:
+            default_target = st.pop("publish_target_temp", None)
+            if default_target == "facebook":
+                st["pending_pub_book"] = {
+                    "titulo": libro.get("titulo", ""),
+                    "portada": libro.get("portada", ""),
+                    "href": href
+                }
+                st["pending_pub_menu_prep"] = menu_prep
+                st["publish_command_origin"] = update.effective_chat.id
+                st["publish_command_thread_id"] = st.get("message_thread_id")
+                from services.telegram_service import _publish_choice_facebook
+                await _publish_choice_facebook(update, context, uid)
+                return
+            elif default_target == "telegram":
+                await publicar_libro(
+                    update, context, uid,
+                    libro["titulo"],
+                    libro.get("portada", ""),
+                    href,
+                    menu_prep=menu_prep
+                )
+                if actual_destino != chat_origen:
+                    try:
+                        await query.edit_message_text(f"✅ Publicado: {libro['titulo']}")
+                    except Exception:
+                        logger.debug("Error al editar confirmación")
+                return
+            # If no temp target is set, fall through to normal behavior (no menu)
+
+        # Publicar EPUB (non-publishers or publisher with no temp)
         await publicar_libro(
             update, context, uid,
             libro["titulo"],
@@ -204,8 +237,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             href,
             menu_prep=menu_prep
         )
-
-        # Confirmación si es otro destino
         if actual_destino != chat_origen:
             try:
                 await query.edit_message_text(f"✅ Publicado: {libro['titulo']}")
@@ -217,16 +248,121 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("publish_target|"):
         choice = data.split("|", 1)[1]
         uid = update.effective_user.id
+        st = state_manager.get_user_state(uid)
+        logger.debug("publish_target callback for uid=%s choice=%s pending=%s origin=%s", uid, choice, st.get('pending_pub_book'), st.get('publish_command_origin'))
         if choice == "facebook":
             from services.telegram_service import _publish_choice_facebook
             await _publish_choice_facebook(update, context, uid)
+        elif choice == "telegram":
+            # Continue publishing using stored pending data
+            pending = st.get("pending_pub_book")
+            if not pending:
+                await query.answer("No hay publicación pendiente.")
+            else:
+                # use the module-level publicar_libro imported at top
+                # Clear pending flag then call publicar_libro to proceed
+                menu_prep = st.pop("pending_pub_menu_prep", None)
+                st.pop("pending_pub_book", None)
+                # Call publicar_libro using stored href/portada/title
+                await publicar_libro(update, context, uid, pending.get("titulo"), pending.get("portada"), pending.get("href"), menu_prep=menu_prep)
         else:
-            from services.telegram_service import _publish_choice_telegram
-            await _publish_choice_telegram(update, context, uid)
+            # Cancel / Exit
+            st.pop("pending_pub_book", None)
+            st.pop("pending_pub_menu_prep", None)
+            st.pop("publish_command_origin", None)
+            st.pop("publish_command_thread_id", None)
+            try:
+                await query.edit_message_text("⛔ Publicación cancelada.")
+            except Exception:
+                pass
         try:
             await query.answer()
         except Exception as e:
             logger.debug("Could not answer publish_target callback: %s", e)
+        return
+
+    # Set ephemeral publish selection at /start (applies to next book only)
+    if data.startswith("set_publish_temp|"):
+        _, choice = data.split("|", 1)
+        if choice not in ("telegram", "facebook", "none"):
+            try:
+                await query.answer("Opción inválida")
+            except Exception:
+                pass
+            return
+        if choice == "none":
+            st.pop("publish_target_temp", None)
+            text = "⚪ Preferencia temporal de publicación descartada."
+        else:
+            # Set one-time publish target that will be popped at next selection
+            st["publish_target_temp"] = choice
+            text = f"✅ Publicación temporal establecida para el próximo libro: {choice}."
+
+        # For non-admin publishers, proceed to show the normal collections
+        # menu now (but don't ask for Evil destination). If the user picked
+        # Facebook, assume publishing in the current chat.
+        if uid not in config.ADMIN_USERS:
+            root = config.OPDS_ROOT_START
+            st["opds_root"] = root
+            st["opds_root_base"] = root
+            st["historial"] = []
+            st["ultima_pagina"] = root
+            if choice == "facebook":
+                st["destino"] = update.effective_chat.id
+                st["chat_origen"] = update.effective_chat.id
+            await mostrar_colecciones(update, context, root, from_collection=False)
+            return
+
+        # If the user is an admin+publisher, choose subsequent behavior now:
+        # - If they picked 'telegram' we show the Evil destination selector.
+        # - If they picked 'facebook' assume "aquí" and enter Evil root directly
+        #   (publisher flow will create FB preview on selection). Non-admin
+        #   publishers continue to the normal start flow.
+        if uid in config.ADMIN_USERS:
+            if choice == "telegram":
+                keyboard = [
+                    [InlineKeyboardButton("📍 Aquí", callback_data="destino|aqui")],
+                    [InlineKeyboardButton("📣 BotTest", callback_data="destino|@ZeePubBotTest")],
+                    [InlineKeyboardButton("📣 ZeePubs", callback_data="destino|@ZeePubs")],
+                    [InlineKeyboardButton("✏️ Otro", callback_data="destino|otro")]
+                ]
+                try:
+                    await query.edit_message_text(
+                        text="🔧 Modo Evil: ¿Dónde quieres publicar?",
+                        reply_markup=InlineKeyboardMarkup(keyboard)
+                    )
+                except Exception:
+                    try:
+                        await query.answer("🔧 Modo Evil: ¿Dónde quieres publicar?")
+                    except Exception:
+                        pass
+                return
+
+            if choice == "facebook":
+                # Admin+publisher; assume publishing in this chat and enter Evil root
+                st["opds_root"] = config.OPDS_ROOT_EVIL
+                st["opds_root_base"] = config.OPDS_ROOT_EVIL
+                st["historial"] = []
+                st["ultima_pagina"] = config.OPDS_ROOT_EVIL
+                st["destino"] = update.effective_chat.id
+                st["chat_origen"] = update.effective_chat.id
+                try:
+                    await query.edit_message_text("✅ Publicación temporal en Facebook seleccionada — entrando a Evil (publicación en este chat).")
+                except Exception:
+                    try:
+                        await query.answer("🔧 Publicación temporal en Facebook seleccionada — entrando a Evil")
+                    except Exception:
+                        pass
+                # show evil collections directly
+                await mostrar_colecciones(update, context, st["opds_root"], from_collection=False)
+                return
+        try:
+            await query.edit_message_text(text)
+        except Exception:
+            try:
+                await query.answer(text)
+            except Exception:
+                logger.debug("Could not send set_publish_temp response")
         return
 
     # Subir nivel (usar historial para ir al nivel anterior)
@@ -345,17 +481,25 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data == "descartar_fb":
         try:
-            await query.message.delete()
+            # Keep the message content but remove inline buttons (reply_markup)
+            try:
+                await query.edit_message_reply_markup(reply_markup=None)
+            except Exception:
+                # Fallback for older versions or partial support
+                try:
+                    await query.edit_message_text(text=query.message.text)
+                except Exception:
+                    pass
             await query.answer("🗑️ Descartado")
         except Exception as e:
-            logger.debug("Could not discard FB preview/delete message: %s", e)
+            logger.debug("Could not discard FB preview buttons: %s", e)
         return
 
 def register_handlers(app):
     # CallbackQuery handlers
     app.add_handler(CallbackQueryHandler(set_destino, pattern="^destino\\|"))
     app.add_handler(CallbackQueryHandler(buscar_epub, pattern="^buscar$"))
-    app.add_handler(CallbackQueryHandler(button_handler, pattern="^(col\\||lib\\||nav\\||subir_nivel|volver_colecciones|volver_ultima|cerrar|descargar_epub|preparar_post_fb|publicar_fb|descartar_fb)"))
+    app.add_handler(CallbackQueryHandler(button_handler, pattern="^(col\\||lib\\||nav\\||subir_nivel|volver_colecciones|volver_ultima|cerrar|descargar_epub|preparar_post_fb|publicar_fb|descartar_fb|publish_target\\||set_publish_temp\\|)"))
     # Texto libre handlers
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_manual_destino))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_search_text))

@@ -162,18 +162,18 @@ def parse_title_string(title_str: str) -> tuple[str, str]:
     vol_match = re.search(r'(Volumen\s+\d+(\.\d+)?)', title_str, re.IGNORECASE)
     volume = vol_match.group(1) if vol_match else ""
     
-    # Serie: Todo antes de " - Volumen" o eliminar volumen y tags
+    # Serie: Eliminar volumen y tags, pero mantener otros símbolos
     series = title_str
-    if " - " in title_str:
-        parts = title_str.split(" - ")
-        # Asumimos que la primera parte es la serie si hay separador claro
-        series = parts[0].strip()
-    else:
-        # Fallback: eliminar volumen y tags
-        if volume:
-            series = series.replace(volume, "")
-        series = re.sub(r'\[.*?\]', '', series).strip()
-        
+    if volume:
+        series = series.replace(volume, "")
+    
+    # Eliminar tags [xxx]
+    series = re.sub(r'\[.*?\]', '', series).strip()
+    
+    # Limpiar separadores residuales al final (ej: "Titulo - ") si quedaron tras quitar volumen
+    # Pero cuidado de no quitar simbolos internos. Solo si están al final.
+    series = re.sub(r'\s+-\s*$', '', series).strip()
+    
     return series.strip(), volume.strip()
 
 def formatear_mensaje_portada(meta: dict, include_slug: bool = True) -> str:
@@ -202,19 +202,29 @@ def formatear_mensaje_portada(meta: dict, include_slug: bool = True) -> str:
 
         # Colocar el slug en la misma línea del título (si se solicita)
         titulo_line = f"Epub de: {series} ║ {collection_title} ║ {internal_title}"
-        if slug and include_slug:
-            titulo_line = f"{titulo_line} #{slug}"
-
         lines.append(titulo_line)
+        
         if volume:
             lines.append(volume)
+
+        if slug and include_slug:
+            lines.append(f"#{slug}")
     else:
         # Lógica antigua (fallback) — poner slug en la misma línea que el título
         titulo_vol = meta.get("titulo_volumen") or ""
+        
+        # Intentar limpiar el título fallback también
+        series_fb, volume_fb = parse_title_string(titulo_vol)
+        if not series_fb:
+            series_fb = titulo_vol
+            
+        lines.append(series_fb)
+        
+        if volume_fb:
+            lines.append(volume_fb)
+
         if slug and include_slug:
-            lines.append(f"{titulo_vol} #{slug}")
-        else:
-            lines.append(titulo_vol)
+            lines.append(f"#{slug}")
 
     # Common metadata fields
     categoria = meta.get("categoria") or "Desconocida"

@@ -32,6 +32,8 @@ class CommandHandlers:
         app.add_handler(CommandHandler("status_links", self.status_links))
         # Registrar /link_list
         app.add_handler(CommandHandler("link_list", self.link_list))
+        # Debug helper for publishers/admins to inspect their state
+        app.add_handler(CommandHandler("debug_state", self.debug_state))
         # Registrar /backup_db y /restore_db (publishers only)
         app.add_handler(CommandHandler("backup_db", self.backup_db))
         app.add_handler(CommandHandler("restore_db", self.restore_db))
@@ -56,12 +58,43 @@ class CommandHandlers:
         )
 
         st = state_manager.get_user_state(uid)
+        # Limpiar estado temporal de libro anterior al reiniciar
+        for k in ("epub_buffer", "meta_pendiente", "portada_pendiente", "titulo_pendiente", "fb_caption"):
+            st.pop(k, None)
         st["destino"] = update.effective_chat.id
         st["chat_origen"] = update.effective_chat.id
         st["message_thread_id"] = thread_id
 
+        # Publishers (ephemeral choice for next book). Admin-only users (not publishers)
+        # will be handled separately (go directly to Evil). For users that are both
+        # admin+publisher we still show the ephemeral choice here.
+        # Publishers (ephemeral choice for next book). Admin-only users (not publishers)
+        # will be handled separately (go directly to Evil). For users that are both
+        # admin+publisher we still show the ephemeral choice here.
+        if uid in config.FACEBOOK_PUBLISHERS:
+            keyboard = [
+                [InlineKeyboardButton("📨 Publicar en Telegram (próximo libro)", callback_data="set_publish_temp|telegram")],
+                [InlineKeyboardButton("📝 Publicar en Facebook (próximo libro)", callback_data="set_publish_temp|facebook")],
+                [InlineKeyboardButton("⛔ Omitir", callback_data="set_publish_temp|none")],
+            ]
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="🔧 Eres publisher — ¿dónde quieres publicar la próxima vez que selecciones un libro?",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                message_thread_id=thread_id
+            )
+            # When a publisher sees this choice we must not continue to show
+            # the collections menu until they choose where to publish. Defer
+            # showing collections until the selection callback runs.
+            return
+
         # Administradores: mostrar selección de destino Evil directamente
-        if uid in config.ADMIN_USERS:
+        # NOTE: If a user is both admin and publisher we *do not* show the
+        # destination menu here. For admin+publisher the ephemeral publish
+        # choice shown above will decide whether to show the destination
+        # selection (Telegram) or assume "aquí" (Facebook). If the user is an
+        # admin but *not* a publisher, we show the Evil menu immediately.
+        if uid in config.ADMIN_USERS and uid not in config.FACEBOOK_PUBLISHERS:
             # Administradores entran directamente en el menú Evil (sin contraseña)
             if uid in config.ADMIN_USERS:
                 root = config.OPDS_ROOT_EVIL
@@ -87,6 +120,8 @@ class CommandHandlers:
                 message_thread_id=thread_id
             )
             return
+
+        # (publisher prompt shown above; continue)
 
         # Usuarios normales
         root = config.OPDS_ROOT_START
@@ -568,6 +603,44 @@ class CommandHandlers:
                 text=f"❌ Error al obtener listado de links: {str(e)}",
                 message_thread_id=thread_id
             )
+
+    async def debug_state(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Debug command to show a snapshot of the user's state (publishers/admins only)."""
+        uid = update.effective_user.id
+
+        # Only allow publishers or admins
+        if uid not in config.FACEBOOK_PUBLISHERS and uid not in config.ADMIN_USERS:
+            await update.message.reply_text("⛔ Solo publishers o administradores pueden usar /debug_state.")
+            return
+
+        st = state_manager.get_user_state(uid)
+        # Build a compact, safe state summary
+        keys = [
+            'destino', 'chat_origen', 'message_thread_id', 'titulo_pendiente', 'portada_pendiente',
+            'pending_pub_book', 'pending_pub_menu_prep', 'awaiting_publish_target', 'publish_command_origin',
+            'publish_command_thread_id', 'msg_botones_id', 'msg_info_id', 'epub_url'
+        ]
+        parts = [f"👤 ID: {uid}", f"⭐ is_admin: {uid in config.ADMIN_USERS}", f"📝 is_publisher: {uid in config.FACEBOOK_PUBLISHERS}"]
+        for k in keys:
+            v = st.get(k)
+            # Make values short for readability
+            if isinstance(v, (str, int)) or v is None:
+                parts.append(f"{k}: {v}")
+            else:
+                try:
+                    # For dicts/lists show length or keys
+                    if isinstance(v, dict):
+                        parts.append(f"{k}: dict(keys={list(v.keys())})")
+                    elif isinstance(v, list):
+                        parts.append(f"{k}: list(len={len(v)})")
+                    else:
+                        parts.append(f"{k}: {repr(v)[:80]}")
+                except Exception:
+                    parts.append(f"{k}: <unprintable>")
+
+        text = "\n".join(parts)
+        thread_id = get_thread_id(update)
+        await context.bot.send_message(chat_id=update.effective_chat.id, text=f"🧭 Estado (parcial):\n\n{text}", message_thread_id=thread_id)
 
     async def backup_db(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Realiza un backup de la base de datos (solo publishers)."""

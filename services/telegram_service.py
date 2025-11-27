@@ -176,23 +176,40 @@ async def publicar_libro(update, context: ContextTypes.DEFAULT_TYPE,
         user_state["portada_pendiente"] = portada_url
         user_state["titulo_pendiente"] = titulo
 
-        # Si el usuario es publisher (puede publicar en Facebook) pedimos destino primero
-        if uid in config.FACEBOOK_PUBLISHERS:
-            # Guardar estado para la elección de destino
-            user_state["awaiting_publish_target"] = True
-            # Botones: Telegram o Facebook
-            keyboard_choice = [
-                [InlineKeyboardButton("📨 Publicar en Telegram", callback_data="publish_target|telegram"), InlineKeyboardButton("📝 Publicar en Facebook", callback_data="publish_target|facebook")],
-                [InlineKeyboardButton("↩️ Volver", callback_data="volver_ultima")]
-            ]
-            await bot.send_message(
-                chat_id=chat_origen,
-                text="🔧 Eres publisher — ¿dónde quieres publicar este EPUB?",
-                reply_markup=InlineKeyboardMarkup(keyboard_choice),
-                message_thread_id=thread_id_origen
-            )
-            # Do not send portada/sinopsis/info now — wait for callback choice
-            return
+        logger.debug("publicar_libro called uid=%s titulo=%r destino=%s chat_origen=%s", uid, titulo, destino, chat_origen)
+
+        # If this function is called directly (not via the callback that already
+        # asks the publish target), and the user is a publisher/admin, prompt
+        # them for where to publish (Telegram or Facebook). This covers flows
+        # where publicar_libro is invoked from elsewhere (e.g., direct commands)
+        # so publishers always get the choice.
+        # If this function is called directly (not via the callback that already
+        # asks the publish target), and the user is a publisher/admin, prompt
+        # them for where to publish (Telegram or Facebook). This covers flows
+        # where publicar_libro is invoked from elsewhere (e.g., direct commands)
+        # so publishers always get the choice.
+        # if (uid in config.FACEBOOK_PUBLISHERS or uid in config.ADMIN_USERS) and not user_state.get("pending_pub_book") and not user_state.get("awaiting_publish_target"):
+        #     logger.debug("publisher/admin detected; prompting publish target for uid=%s", uid)
+        #     user_state["pending_pub_book"] = {"titulo": titulo, "portada": portada_url, "href": epub_url}
+        #     user_state["pending_pub_menu_prep"] = menu_prep
+        #     user_state["publish_command_origin"] = update.effective_chat.id
+        #     user_state["publish_command_thread_id"] = user_state.get("message_thread_id")
+        #     user_state["awaiting_publish_target"] = True
+        #
+        #     keyboard = [
+        #         [InlineKeyboardButton("📨 Publicar en Telegram", callback_data="publish_target|telegram")],
+        #         [InlineKeyboardButton("📝 Publicar en Facebook", callback_data="publish_target|facebook")],
+        #         [InlineKeyboardButton("⛔ Salir", callback_data="publish_target|cancel")]
+        #     ]
+        #     await bot.send_message(
+        #         chat_id=update.effective_chat.id,
+        #         text="🔧 Eres publisher — ¿dónde quieres publicar este EPUB?",
+        #         reply_markup=InlineKeyboardMarkup(keyboard),
+        #         message_thread_id=user_state.get("message_thread_id")
+        #     )
+        #     return
+
+        # For publishers the choice is asked earlier; just continue publishing normally
 
         # Dentro de publicar_libro, donde quieras enviar portada:
         mensaje_portada = formatear_mensaje_portada(meta)
@@ -282,8 +299,9 @@ async def publicar_libro(update, context: ContextTypes.DEFAULT_TYPE,
         ]
         
         # Botón Facebook para publishers
-        if uid in config.FACEBOOK_PUBLISHERS:
-            keyboard.append([InlineKeyboardButton("📝 Post FB", callback_data="preparar_post_fb")])
+        # Allow admins to have Facebook publishing controls too
+        # if uid in config.FACEBOOK_PUBLISHERS or uid in config.ADMIN_USERS:
+        #     keyboard.append([InlineKeyboardButton("📝 Post FB", callback_data="preparar_post_fb")])
             
         keyboard.append([InlineKeyboardButton("↩️ Volver", callback_data="volver_ultima")])
 
@@ -566,8 +584,13 @@ async def preparar_post_facebook(update, context: ContextTypes.DEFAULT_TYPE, uid
         return
     public_link = f"{dl_domain}/api/dl/{url_hash}"
     
-    # Usar formatear_mensaje_portada para generar el caption completo (sin slug)
-    full_caption = formatear_mensaje_portada(meta, include_slug=False).rstrip()
+
+    # Restaurar formato enriquecido del título (negritas, saltos, etc)
+    # Restaurar formato enriquecido del título (negritas, saltos, etc)
+    # titulo = meta.get("titulo") or titulo
+    # if "internal_title" in meta:
+    #     titulo = f"<b>{meta['internal_title']}</b>"
+    full_caption = f"<b>Vista Previa Facebook:</b>\n\n" + formatear_mensaje_portada(meta, include_slug=False).rstrip()
 
     # Añadir sinopsis (si está disponible) — la vista previa y la publicación deben
     # mostrar la sinopsis completa pero sin el slug/hashtag.
@@ -635,13 +658,18 @@ async def preparar_post_facebook(update, context: ContextTypes.DEFAULT_TYPE, uid
     
     btns.append([InlineKeyboardButton("🗑️ Descartar", callback_data="descartar_fb")])
     
-    # Enviar como mensaje nuevo
+    logger.debug("preparar_post_facebook: uid=%s preview_chat=%s thread=%s meta_title=%r", uid, user_state.get('publish_command_origin'), user_state.get('publish_command_thread_id'), titulo)
+
+    # Enviar como mensaje nuevo — preferir el chat donde se ejecutó el comando
+    preview_chat = user_state.get("publish_command_origin") or uid
+    preview_thread = user_state.get("publish_command_thread_id")
     await bot.send_message(
-        chat_id=uid,
+        chat_id=preview_chat,
         text=f"📝 <b>Vista Previa Facebook:</b>\n\n{caption}",
         parse_mode="HTML",
         disable_web_page_preview=False,
-        reply_markup=InlineKeyboardMarkup(btns)
+        reply_markup=InlineKeyboardMarkup(btns),
+        message_thread_id=preview_thread
     )
 
 
@@ -650,9 +678,22 @@ async def _publish_choice_facebook(update, context: ContextTypes.DEFAULT_TYPE, u
     bot = context.bot
     st = state_manager.get_user_state(uid)
 
-    meta = st.get("meta_pendiente", {})
+    # Clear awaiting flag (we're handling the choice now)
+    st.pop("awaiting_publish_target", None)
+
+    logger.debug("_publish_choice_facebook: handling for uid=%s pending=%s", uid, st.get('pending_pub_book'))
+
+    # If we have a pending_pub_book (set at selection), use it; otherwise rely on meta_pendiente
+    pending = st.pop("pending_pub_book", None)
     epub_url = st.get("epub_url", "")
     epub_buffer = st.get("epub_buffer")
+    meta = st.get("meta_pendiente", {})
+    if pending:
+        # populate ephemeral state for this publish flow
+        st["titulo_pendiente"] = pending.get("titulo")
+        st["portada_pendiente"] = pending.get("portada")
+        epub_url = pending.get("href")
+        st["epub_url"] = epub_url
 
     # Try to obtain cover bytes from buffer or fetch cover_url from meta
     cover_bytes = None
@@ -663,18 +704,67 @@ async def _publish_choice_facebook(update, context: ContextTypes.DEFAULT_TYPE, u
     except Exception:
         cover_bytes = None
 
-    if not cover_bytes and meta.get("portada"):
-        cover_bytes = await fetch_bytes(meta.get("portada"))
+    # If cover not extracted from buffer, try the pending portada or meta portada
+    portada_url = pending.get("portada") if pending else meta.get("portada")
+    if not cover_bytes and portada_url:
+        cover_bytes = await fetch_bytes(portada_url)
+
+    # If we still don't have metadata or buffer, try to fetch EPUB to build meta/cover
+    if (not cover_bytes or not meta) and epub_url:
+        epub_downloaded = await fetch_bytes(epub_url, timeout=60)
+        if epub_downloaded:
+            st["epub_buffer"] = epub_downloaded
+            epub_buffer = epub_downloaded
+            try:
+                opf_meta = await parse_opf_from_epub(epub_downloaded)
+                if opf_meta:
+                    meta.update(opf_meta)
+                    st["meta_pendiente"] = meta
+            except Exception:
+                pass
+            
+            # Extraer título interno y nombre de archivo para nuevo formato (igual que en publicar_libro)
+            try:
+                from services.epub_service import extract_internal_title
+                internal_title = extract_internal_title(epub_downloaded)
+                if internal_title:
+                    meta["internal_title"] = internal_title
+                
+                # Extraer filename_title del epub_url
+                from urllib.parse import unquote, urlparse
+                filename_title = unquote(urlparse(epub_url).path.split("/")[-1]).replace(".epub", "")
+                meta["filename_title"] = filename_title
+                
+                # Actualizar estado con nuevos metadatos
+                st["meta_pendiente"] = meta
+            except Exception as e:
+                logger.debug(f"_publish_choice_facebook: fallo extra metadata: {e}")
+
+            if not cover_bytes:
+                try:
+                    cover_bytes = extract_cover_from_epub(epub_downloaded)
+                except Exception:
+                    cover_bytes = None
+
+    logger.debug("_publish_choice_facebook: sending cover to origin=%s (thread=%s), have_cover=%s", st.get('publish_command_origin'), st.get('publish_command_thread_id'), bool(cover_bytes))
 
     # Send only cover (no caption) if available
     if cover_bytes:
-        await send_photo_bytes(bot, uid, caption=None, data_or_path=cover_bytes, filename="cover.jpg", parse_mode=None)
+        # send the cover to the chat where the publisher invoked the command, default to uid
+        dest_chat = st.get("publish_command_origin") or uid
+        thread = st.get("publish_command_thread_id")
+        await send_photo_bytes(bot, dest_chat, caption=None, data_or_path=cover_bytes, filename="cover.jpg", parse_mode=None, message_thread_id=thread)
         # If cover was a temp file path, cleanup
         if isinstance(cover_bytes, str):
             cleanup_tmp(cover_bytes)
 
-    # Now prepare and send the FB preview text
+    # Now prepare and send the FB preview text to the publisher (private chat)
     await preparar_post_facebook(update, context, uid)
+
+    # cleanup pending menu_prep
+    st.pop("pending_pub_menu_prep", None)
+    st.pop("publish_command_origin", None)
+    st.pop("publish_command_thread_id", None)
 
 
 async def _publish_choice_telegram(update, context: ContextTypes.DEFAULT_TYPE, uid: int):
@@ -682,6 +772,7 @@ async def _publish_choice_telegram(update, context: ContextTypes.DEFAULT_TYPE, u
     bot = context.bot
     st = state_manager.get_user_state(uid)
     st.pop("awaiting_publish_target", None)
+    logger.debug("_publish_choice_telegram: uid=%s pending=%s destino=%s chat_origen=%s", uid, st.get('pending_pub_book'), st.get('destino'), st.get('chat_origen'))
 
     destino = st.get("destino") or update.effective_chat.id
     chat_origen = st.get("chat_origen") or destino
@@ -790,7 +881,12 @@ async def publicar_facebook_action(update, context: ContextTypes.DEFAULT_TYPE, u
     # Subir a Facebook usando Graph API
     import httpx
     
-    msg = await bot.send_message(chat_id=uid, text="⏳ Publicando en Facebook...")
+    logger.debug("publicar_facebook_action: uid=%s publish_command_origin=%s thread=%s caption_len=%s", uid, user_state.get('publish_command_origin'), user_state.get('publish_command_thread_id'), len(caption) if caption else 0)
+
+    # Send progress message in the chat where the preview/button was clicked (origin) if available
+    publish_chat = user_state.get("publish_command_origin") or update.effective_chat.id or uid
+    publish_thread = user_state.get("publish_command_thread_id")
+    msg = await bot.send_message(chat_id=publish_chat, text="⏳ Publicando en Facebook...", message_thread_id=publish_thread)
     
     try:
         url = f"https://graph.facebook.com/{config.FACEBOOK_GROUP_ID}/photos"
@@ -812,16 +908,17 @@ async def publicar_facebook_action(update, context: ContextTypes.DEFAULT_TYPE, u
             resp.raise_for_status()
             fb_res = resp.json()
             
+        # Notify origin chat and private publisher chat (if different)
         await bot.edit_message_text(
-            chat_id=uid, 
-            message_id=msg.message_id, 
+            chat_id=publish_chat,
+            message_id=msg.message_id,
             text=f"✅ Publicado exitosamente!\nID: {fb_res.get('id')}"
         )
         
     except Exception as e:
         logger.error(f"Error publicando en FB: {e}")
         await bot.edit_message_text(
-            chat_id=uid, 
+            chat_id=publish_chat, 
             message_id=msg.message_id, 
             text=f"❌ Error al publicar: {str(e)}"
         )
