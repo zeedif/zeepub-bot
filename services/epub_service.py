@@ -450,4 +450,66 @@ async def enrich_metadata_from_epub(epub_bytes: Union[bytes, str], epub_url: str
     except Exception as e:
         logger.debug(f"enrich_metadata_from_epub: filename extraction failed: {e}")
     
+    # Extract publisher URL from HTML (prioritized over OPF)
+    try:
+        html_publisher_url = extract_publisher_url_from_html(epub_bytes)
+        if html_publisher_url:
+            meta["publisher_url"] = html_publisher_url
+            logger.debug(f"enrich_metadata_from_epub: publisher_url updated from HTML: {html_publisher_url}")
+    except Exception as e:
+        logger.debug(f"enrich_metadata_from_epub: HTML publisher URL extraction failed: {e}")
+
     return meta
+
+
+def extract_publisher_url_from_html(data_or_path: Union[bytes, str]) -> Optional[str]:
+    """
+    Busca la URL del publisher/traductor en archivos HTML internos (title/titulo).
+    Prioridad:
+    1. <p class="salto1"><b>Página Web</b>...<a href="...">
+    2. <p class="salto1"><b>Redes sociales</b>...<a href="...">
+    """
+    try:
+        if isinstance(data_or_path, (bytes, bytearray)):
+            zf = zipfile.ZipFile(io.BytesIO(data_or_path))
+        else:
+            zf = zipfile.ZipFile(data_or_path)
+        
+        # Buscar archivos candidatos
+        candidates = [n for n in zf.namelist() if "title" in n.lower() or "titulo" in n.lower()]
+        
+        # Regex patterns
+        # Busca el bloque de Página Web
+        # <p class="salto1"><b>Página Web</b><br/><a href="...">
+        pat_web = re.compile(
+            r'<p[^>]*class="salto1"[^>]*>.*?<b>Página Web</b>.*?<a[^>]+href="([^"]+)"', 
+            re.IGNORECASE | re.DOTALL
+        )
+        
+        # Busca el bloque de Redes sociales
+        # <p class="salto1"><b>Redes sociales</b><br/><a href="...">
+        pat_social = re.compile(
+            r'<p[^>]*class="salto1"[^>]*>.*?<b>Redes sociales</b>.*?<a[^>]+href="([^"]+)"', 
+            re.IGNORECASE | re.DOTALL
+        )
+
+        for name in candidates:
+            try:
+                content = zf.read(name).decode("utf-8", errors="ignore")
+                
+                # 1. Intentar Página Web
+                match_web = pat_web.search(content)
+                if match_web:
+                    return match_web.group(1).strip()
+                
+                # 2. Intentar Redes sociales
+                match_social = pat_social.search(content)
+                if match_social:
+                    return match_social.group(1).strip()
+                    
+            except Exception:
+                continue
+                
+        return None
+    except Exception:
+        return None
