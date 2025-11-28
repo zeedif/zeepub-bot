@@ -3,7 +3,7 @@
 import logging
 import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from datetime import datetime
+from datetime import datetime, timedelta
 from telegram.ext import ContextTypes, CommandHandler
 from core.state_manager import state_manager
 from utils.download_limiter import downloads_left, record_download, can_download
@@ -152,17 +152,46 @@ class CommandHandlers:
         await mostrar_colecciones(update, context, root, from_collection=False)
 
     async def help(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Handle /help: muestra ayuda básica."""
+        """Handle /help: muestra ayuda dinámica según el rol del usuario."""
+        uid = update.effective_user.id
         thread_id = get_thread_id(update)
+        
+        # Comandos básicos para todos
+        commands = [
+            ("🚀 /start", "Iniciar el bot"),
+            ("ℹ️ /help", "Mostrar esta ayuda"),
+            ("📊 /status", "Ver tu estado y descargas"),
+            ("❌ /cancel", "Cancelar acción actual"),
+            ("🔍 /search", "Buscar libros"),
+        ]
 
-        text = (
-            "🤖 *Ayuda de ZeePub Bot*\n\n"
-            "Aquí tienes lo que puedo hacer por ti:\n\n"
-            "/start - 🚀 Comencemos\n"
-            "/help - ℹ️ Mostrar esta ayuda\n"
-            "/status - 📊 Ver tu estado y descargas\n"
-            "/cancel - ❌ Cancelar acción actual\n"
-        )
+        # Comandos para Publishers (y Admins)
+        is_publisher = uid in config.FACEBOOK_PUBLISHERS
+        is_admin = uid in config.ADMIN_USERS
+        
+        if is_publisher or is_admin:
+            commands.extend([
+                ("📦 /backup_db", "Generar backup de la base de datos"),
+                ("♻️ /restore_db", "Restaurar base de datos desde archivo"),
+                ("📤 /export_db", "Exportar mapeo de URLs a CSV"),
+                ("📈 /status_links", "Ver estado de links acortados"),
+                ("📋 /link_list", "Listar links acortados recientes"),
+                ("🗑️ /purge_link", "Eliminar un link acortado (uso: /purge_link <hash>)"),
+            ])
+
+        # Comandos exclusivos de Admin
+        if is_admin:
+            commands.extend([
+                ("😈 /evil", "Entrar en modo Evil (Admin)"),
+                ("🔄 /reset", "Resetear descargas de usuario (uso: /reset <id>)"),
+                ("🐞 /debug_state", "Ver estado interno de usuario"),
+            ])
+            
+        # Construir mensaje
+        text = "🤖 *Ayuda de ZeePub Bot*\n\nAquí tienes lo que puedo hacer por ti:\n\n"
+        for cmd, desc in commands:
+            text += f"*{cmd}* - {desc}\n"
+
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text=text,
@@ -173,7 +202,6 @@ class CommandHandlers:
     async def status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /status: informa estado interno, nivel de usuario y descargas restantes."""
         uid = update.effective_user.id
-        st = state_manager.get_user_state(uid)
         st = state_manager.get_user_state(uid)
 
         # Determinar nivel de usuario y máximo de descargas
@@ -198,12 +226,20 @@ class CommandHandlers:
             remaining = max_dl - used
             left_text = f"⚡️ Te quedan {remaining if remaining>0 else 0} descargas por día (de {max_dl})"
 
+        # Calcular tiempo para próximo reset (medianoche)
+        now = datetime.now()
+        next_midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        time_left = next_midnight - now
+        hours, remainder = divmod(int(time_left.total_seconds()), 3600)
+        minutes, _ = divmod(remainder, 60)
+
         text = (
             "📊 *Tu Estado*\n\n"
             f"👤 *Usuario:* {update.effective_user.first_name}\n"
             f"🆔 *ID:* {uid}\n"
             f"⭐ *Nivel:* {user_level}\n"
             f"📉 *Descargas:* {left_text}\n"
+            f"⏳ *Reinicio en:* {hours}h {minutes}m\n"
         )
 
         thread_id = get_thread_id(update)
