@@ -35,13 +35,16 @@
   - Menú de selección en `/start` para elegir destino de publicación (Telegram/Facebook).
   - Preferencia temporal que se aplica al siguiente libro seleccionado.
   - Publicación directa sin menús de interrupción.
-- **Comandos de Administración** (Solo Publishers):
-  - `/backup_db`: Genera y envía un backup completo de la base de datos PostgreSQL.
-  - `/restore_db`: Restaura la base de datos desde un archivo .sql.
+- **Comandos de Publishers**:
   - `/export_db`: Exporta la tabla `url_mappings` a CSV.
   - `/link_list [limit]`: Lista los links acortados más recientes (hasta 50).
   - `/status_links`: Muestra el estado de los últimos 5 links con validación en tiempo real.
   - `/purge_link <hash>`: Elimina un link acortado específico de la base de datos.
+- **Comandos de Administración** (Solo Admins):
+  - `/backup_db`: Genera y envía un backup completo de la base de datos PostgreSQL.
+  - `/restore_db`: Restaura la base de datos desde un archivo .sql.
+  - `/evil`: Acceso al modo Evil con bibliotecas restringidas.
+  - `/reset <user_id>`: Resetea el contador de descargas de un usuario.
   - `/debug_state`: Muestra el estado actual del usuario (para debugging).
 - **Reportes Automáticos**:
   - Sistema de reportes semanales automáticos cada lunes a las 9:00 AM con estadísticas de links (total, válidos, rotos, tasa de éxito).

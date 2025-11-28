@@ -171,8 +171,6 @@ class CommandHandlers:
         
         if is_publisher or is_admin:
             commands.extend([
-                ("📦 /backup_db", "Generar backup de la base de datos"),
-                ("♻️ /restore_db", "Restaurar base de datos desde archivo"),
                 ("📤 /export_db", "Exportar mapeo de URLs a CSV"),
                 ("📈 /status_links", "Ver estado de links acortados"),
                 ("📋 /link_list", "Listar links acortados recientes"),
@@ -182,6 +180,8 @@ class CommandHandlers:
         # Comandos exclusivos de Admin
         if is_admin:
             commands.extend([
+                ("📦 /backup_db", "Generar backup de la base de datos"),
+                ("♻️ /restore_db", "Restaurar base de datos desde archivo"),
                 ("😈 /evil", "Entrar en modo Evil (Admin)"),
                 ("🔄 /reset", "Resetear descargas de usuario (uso: /reset <id>)"),
                 ("🐞 /debug_state", "Ver estado interno de usuario"),
