@@ -731,11 +731,12 @@ class CommandHandlers:
                     raise Exception(f"No se encontró la base de datos SQLite en: {db_path}")
                 
                 # Enviar el archivo directamente
+                sqlite_filename = f"backup_zeepub_sqlite_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
                 with open(db_path, "rb") as f:
                     await context.bot.send_document(
                         chat_id=update.effective_chat.id,
                         document=f,
-                        filename=os.path.basename(db_path),
+                        filename=sqlite_filename,
                         caption=f"📦 Backup de base de datos (SQLite)\n📅 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
                         message_thread_id=thread_id
                     )
