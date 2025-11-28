@@ -17,6 +17,11 @@ db_url = os.environ.get('DATABASE_URL')
 if db_url:
     config.set_main_option('sqlalchemy.url', db_url)
 
+# Add project root to Python path so we can import our modules
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 # add your model's MetaData object here
 from utils import url_cache as url_cache_module
 
