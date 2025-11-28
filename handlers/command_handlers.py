@@ -655,71 +655,91 @@ class CommandHandlers:
             from datetime import datetime
             from urllib.parse import urlparse
             
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"backup_zeepub_{timestamp}.sql"
-            
-            # Obtener credenciales
-            pg_user = os.getenv("POSTGRES_USER")
-            pg_password = os.getenv("POSTGRES_PASSWORD")
-            pg_db = os.getenv("POSTGRES_DB")
-            pg_host = "db" # Default docker service name
-            
-            # Si no están en env, intentar parsear DATABASE_URL
-            if not pg_user and config.DATABASE_URL:
-                try:
-                    from sqlalchemy.engine import make_url
-                    url = make_url(config.DATABASE_URL)
-                    pg_user = url.username
-                    pg_password = url.password
-                    if url.host:
-                        pg_host = url.host
-                    pg_db = url.database
-                except Exception as e:
-                    logger.error(f"Error parsing DATABASE_URL: {e}")
-
-            if not pg_user or not pg_password:
-                raise Exception("No se encontraron credenciales de base de datos.")
-
-            # Configurar entorno para pg_dump
-            env = os.environ.copy()
-            env["PGPASSWORD"] = pg_password
-            
-            # Comando pg_dump
-            cmd = [
-                "pg_dump",
-                "-h", pg_host,
-                "-U", pg_user,
-                "-d", pg_db,
-                "-f", filename
-            ]
-            
-            # Use asyncio subprocess with timeout to avoid blocking and enable streaming
-            import asyncio as _asyncio
-            proc = await _asyncio.create_subprocess_exec(*cmd, env=env, stdout=_asyncio.subprocess.PIPE, stderr=_asyncio.subprocess.PIPE)
-            try:
-                stdout, stderr = await _asyncio.wait_for(proc.communicate(), timeout=120)
-            except _asyncio.TimeoutError:
-                proc.kill()
-                await proc.wait()
-                raise Exception("pg_dump timed out")
-            if proc.returncode != 0:
-                raise Exception(f"pg_dump failed: {stderr.decode(errors='ignore')}")
+            # Determinar si usar PostgreSQL o SQLite
+            if config.DATABASE_URL:
+                # --- Lógica PostgreSQL ---
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"backup_zeepub_{timestamp}.sql"
                 
-            # Enviar archivo (asegurar cierre del descriptor)
-            with open(filename, "rb") as f:
-                await context.bot.send_document(
-                    chat_id=update.effective_chat.id,
-                    document=f,
-                    filename=filename,
-                    caption=f"📦 Backup de base de datos\n📅 {timestamp}",
-                    message_thread_id=thread_id
-                )
+                # Obtener credenciales
+                pg_user = os.getenv("POSTGRES_USER")
+                pg_password = os.getenv("POSTGRES_PASSWORD")
+                pg_db = os.getenv("POSTGRES_DB")
+                pg_host = "db" # Default docker service name
+                
+                # Si no están en env, intentar parsear DATABASE_URL
+                if not pg_user:
+                    try:
+                        from sqlalchemy.engine import make_url
+                        url = make_url(config.DATABASE_URL)
+                        pg_user = url.username
+                        pg_password = url.password
+                        if url.host:
+                            pg_host = url.host
+                        pg_db = url.database
+                    except Exception as e:
+                        logger.error(f"Error parsing DATABASE_URL: {e}")
 
-            # Limpiar (intentar eliminar, si falla solo loguear)
-            try:
-                os.remove(filename)
-            except Exception:
-                logger.debug("No se pudo eliminar backup temporal: %s", filename)
+                if not pg_user or not pg_password:
+                    raise Exception("No se encontraron credenciales de base de datos.")
+
+                # Configurar entorno para pg_dump
+                env = os.environ.copy()
+                env["PGPASSWORD"] = pg_password
+                
+                # Comando pg_dump
+                cmd = [
+                    "pg_dump",
+                    "-h", pg_host,
+                    "-U", pg_user,
+                    "-d", pg_db,
+                    "-f", filename
+                ]
+                
+                # Use asyncio subprocess with timeout
+                import asyncio as _asyncio
+                proc = await _asyncio.create_subprocess_exec(*cmd, env=env, stdout=_asyncio.subprocess.PIPE, stderr=_asyncio.subprocess.PIPE)
+                try:
+                    stdout, stderr = await _asyncio.wait_for(proc.communicate(), timeout=120)
+                except _asyncio.TimeoutError:
+                    proc.kill()
+                    await proc.wait()
+                    raise Exception("pg_dump timed out")
+                if proc.returncode != 0:
+                    raise Exception(f"pg_dump failed: {stderr.decode(errors='ignore')}")
+                    
+                # Enviar archivo
+                with open(filename, "rb") as f:
+                    await context.bot.send_document(
+                        chat_id=update.effective_chat.id,
+                        document=f,
+                        filename=filename,
+                        caption=f"📦 Backup de base de datos (PostgreSQL)\n📅 {timestamp}",
+                        message_thread_id=thread_id
+                    )
+
+                # Limpiar
+                try:
+                    os.remove(filename)
+                except Exception:
+                    logger.debug("No se pudo eliminar backup temporal: %s", filename)
+            
+            else:
+                # --- Lógica SQLite ---
+                db_path = config.URL_CACHE_DB_PATH
+                if not os.path.exists(db_path):
+                    raise Exception(f"No se encontró la base de datos SQLite en: {db_path}")
+                
+                # Enviar el archivo directamente
+                with open(db_path, "rb") as f:
+                    await context.bot.send_document(
+                        chat_id=update.effective_chat.id,
+                        document=f,
+                        filename=os.path.basename(db_path),
+                        caption=f"📦 Backup de base de datos (SQLite)\n📅 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                        message_thread_id=thread_id
+                    )
+
             await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=msg.message_id)
             
         except Exception as e:
@@ -742,9 +762,10 @@ class CommandHandlers:
             return
             
         doc = update.message.reply_to_message.document
-        if not doc.file_name.endswith(".sql"):
-            await update.message.reply_text("⚠️ El archivo debe tener extensión .sql")
-            return
+        # Validación de extensión movida dentro de la lógica específica de DB
+        # if not doc.file_name.endswith(".sql"):
+        #     await update.message.reply_text("⚠️ El archivo debe tener extensión .sql")
+        #     return
             
         thread_id = get_thread_id(update)
         msg = await context.bot.send_message(
@@ -760,55 +781,92 @@ class CommandHandlers:
             
             # Descargar archivo
             file = await doc.get_file()
-            filename = f"restore_{doc.file_name}"
-            await file.download_to_drive(filename)
             
-            # Obtener credenciales (igual que backup)
-            pg_user = os.getenv("POSTGRES_USER")
-            pg_password = os.getenv("POSTGRES_PASSWORD")
-            pg_db = os.getenv("POSTGRES_DB")
-            pg_host = "db"
-            
-            if not pg_user and config.DATABASE_URL:
-                try:
-                    from sqlalchemy.engine import make_url
-                    url = make_url(config.DATABASE_URL)
-                    pg_user = url.username
-                    pg_password = url.password
-                    if url.host:
-                        pg_host = url.host
-                    pg_db = url.database
-                except Exception:
-                    pass
+            if config.DATABASE_URL:
+                # --- Lógica PostgreSQL ---
+                if not doc.file_name.endswith(".sql"):
+                    await context.bot.edit_message_text(
+                        chat_id=update.effective_chat.id,
+                        message_id=msg.message_id,
+                        text="⚠️ Para PostgreSQL, el archivo debe ser un .sql"
+                    )
+                    return
 
-            if not pg_user or not pg_password:
-                raise Exception("No se encontraron credenciales de base de datos.")
-            
-            # Configurar entorno
-            env = os.environ.copy()
-            env["PGPASSWORD"] = pg_password
-            
-            # Comando psql para restaurar
-            # Usamos -f para leer archivo
-            cmd = [
-                "psql",
-                "-h", pg_host,
-                "-U", pg_user,
-                "-d", pg_db,
-                "-f", filename
-            ]
-            
-            # Use asyncio subprocess to run psql non-blocking
-            import asyncio as _asyncio
-            proc = await _asyncio.create_subprocess_exec(*cmd, env=env, stdout=_asyncio.subprocess.PIPE, stderr=_asyncio.subprocess.PIPE)
-            try:
-                stdout, stderr = await _asyncio.wait_for(proc.communicate(), timeout=180)
-            except _asyncio.TimeoutError:
-                proc.kill()
-                await proc.wait()
-                raise Exception("psql restore timed out")
-            if proc.returncode != 0:
-                raise Exception(f"Restore failed: {stderr.decode(errors='ignore')}")
+                filename = f"restore_{doc.file_name}"
+                await file.download_to_drive(filename)
+                
+                # Obtener credenciales (igual que backup)
+                pg_user = os.getenv("POSTGRES_USER")
+                pg_password = os.getenv("POSTGRES_PASSWORD")
+                pg_db = os.getenv("POSTGRES_DB")
+                pg_host = "db"
+                
+                if not pg_user:
+                    try:
+                        from sqlalchemy.engine import make_url
+                        url = make_url(config.DATABASE_URL)
+                        pg_user = url.username
+                        pg_password = url.password
+                        if url.host:
+                            pg_host = url.host
+                        pg_db = url.database
+                    except Exception:
+                        pass
+
+                if not pg_user or not pg_password:
+                    raise Exception("No se encontraron credenciales de base de datos.")
+                
+                # Configurar entorno
+                env = os.environ.copy()
+                env["PGPASSWORD"] = pg_password
+                
+                # Comando psql para restaurar
+                cmd = [
+                    "psql",
+                    "-h", pg_host,
+                    "-U", pg_user,
+                    "-d", pg_db,
+                    "-f", filename
+                ]
+                
+                # Use asyncio subprocess
+                import asyncio as _asyncio
+                proc = await _asyncio.create_subprocess_exec(*cmd, env=env, stdout=_asyncio.subprocess.PIPE, stderr=_asyncio.subprocess.PIPE)
+                try:
+                    stdout, stderr = await _asyncio.wait_for(proc.communicate(), timeout=180)
+                except _asyncio.TimeoutError:
+                    proc.kill()
+                    await proc.wait()
+                    raise Exception("psql restore timed out")
+                if proc.returncode != 0:
+                    raise Exception(f"Restore failed: {stderr.decode(errors='ignore')}")
+                    
+                try:
+                    os.remove(filename)
+                except Exception:
+                    logger.debug("No se pudo eliminar archivo temporal de restore: %s", filename)
+
+            else:
+                # --- Lógica SQLite ---
+                # Validar extensión (opcional, pero recomendable)
+                if not (doc.file_name.endswith(".db") or doc.file_name.endswith(".sqlite")):
+                     await context.bot.edit_message_text(
+                        chat_id=update.effective_chat.id,
+                        message_id=msg.message_id,
+                        text="⚠️ Para SQLite, el archivo debe ser .db o .sqlite"
+                    )
+                     return
+
+                # Sobrescribir el archivo de base de datos
+                db_path = config.URL_CACHE_DB_PATH
+                
+                # Backup de seguridad antes de sobrescribir
+                if os.path.exists(db_path):
+                    backup_path = f"{db_path}.bak"
+                    import shutil
+                    shutil.copy2(db_path, backup_path)
+                
+                await file.download_to_drive(db_path)
                 
             await context.bot.edit_message_text(
                 chat_id=update.effective_chat.id,
@@ -816,11 +874,6 @@ class CommandHandlers:
                 text="✅ Base de datos restaurada exitosamente."
             )
             logger.info(f"Publisher {uid} restauró la base de datos desde {doc.file_name}")
-            
-            try:
-                os.remove(filename)
-            except Exception:
-                logger.debug("No se pudo eliminar archivo temporal de restore: %s", filename)
             
         except Exception as e:
             logger.error(f"Error en restore_db: {e}", exc_info=True)
