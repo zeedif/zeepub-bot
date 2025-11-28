@@ -115,7 +115,7 @@ class ZeePubBot:
 
             # Cargar descargas persistidas
             load_downloads()
-            
+
             # Iniciar scheduler
             start_daily_reset_scheduler(self.app.bot)
             logger.info("Daily reset scheduler iniciado")

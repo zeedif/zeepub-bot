@@ -155,7 +155,7 @@ class CommandHandlers:
         """Handle /help: muestra ayuda dinámica según el rol del usuario."""
         uid = update.effective_user.id
         thread_id = get_thread_id(update)
-        
+
         # Comandos básicos para todos
         commands = [
             ("🚀 /start", "Iniciar el bot"),
@@ -168,7 +168,7 @@ class CommandHandlers:
         # Comandos para Publishers (y Admins)
         is_publisher = uid in config.FACEBOOK_PUBLISHERS
         is_admin = uid in config.ADMIN_USERS
-        
+
         if is_publisher or is_admin:
             commands.extend([
                 ("📤 /export_db", "Exportar mapeo de URLs a CSV"),
@@ -186,7 +186,7 @@ class CommandHandlers:
                 ("🔄 /reset", "Resetear descargas de usuario (uso: /reset <id>)"),
                 ("🐞 /debug_state", "Ver estado interno de usuario"),
             ])
-            
+
         # Construir mensaje
         text = "🤖 *Ayuda de ZeePub Bot*\n\nAquí tienes lo que puedo hacer por ti:\n\n"
         for cmd, desc in commands:
@@ -516,11 +516,11 @@ class CommandHandlers:
 
         # Resetear descargas
         from utils.download_limiter import save_download
-        
+
         user_state = state_manager.get_user_state(target_uid)
         old_count = user_state.get("downloads_used", 0)
         user_state["downloads_used"] = 0
-        
+
         # Actualizar persistencia
         save_download(target_uid, 0)
 

@@ -23,7 +23,7 @@ def load_downloads() -> None:
     try:
         with open(DAILY_DOWNLOADS_FILE, "r") as f:
             data = json.load(f)
-            
+
         count = 0
         for uid_str, downloads in data.items():
             try:
@@ -33,7 +33,7 @@ def load_downloads() -> None:
                 count += 1
             except ValueError:
                 continue
-                
+
         logger.info(f"Cargados contadores de descarga para {count} usuarios.")
     except Exception as e:
         logger.error(f"Error cargando daily_downloads.json: {e}")
@@ -60,7 +60,7 @@ def save_download(uid: int, count: int) -> None:
         os.makedirs(os.path.dirname(DAILY_DOWNLOADS_FILE), exist_ok=True)
         with open(DAILY_DOWNLOADS_FILE, "w") as f:
             json.dump(data, f)
-            
+
     except Exception as e:
         logger.error(f"Error guardando descarga para {uid}: {e}")
 
@@ -76,7 +76,7 @@ def reset_all_downloads() -> None:
     for uid, state in state_manager.user_state.items():
         if "downloads_used" in state:
             state["downloads_used"] = 0
-            
+
     # 2. Eliminar archivo de persistencia
     if os.path.exists(DAILY_DOWNLOADS_FILE):
         try:
@@ -133,6 +133,6 @@ def record_download(uid: int) -> None:
     st = state_manager.get_user_state(uid)
     new_count = st.get("downloads_used", 0) + 1
     st["downloads_used"] = new_count
-    
+
     # Persistir cambio
     save_download(uid, new_count)

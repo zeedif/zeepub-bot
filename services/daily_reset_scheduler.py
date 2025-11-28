@@ -18,21 +18,21 @@ async def daily_reset_loop():
             next_midnight = (now + timedelta(days=1)).replace(
                 hour=0, minute=0, second=0, microsecond=0
             )
-            
+
             wait_seconds = (next_midnight - now).total_seconds()
             logger.info(f"Próximo reset de descargas en {wait_seconds:.0f} segundos ({next_midnight})")
-            
+
             # Esperar hasta medianoche
             await asyncio.sleep(wait_seconds)
-            
+
             # Ejecutar reset
             logger.info("Ejecutando reset diario de descargas...")
             reset_all_downloads()
             logger.info("Reset diario completado.")
-            
+
             # Pequeña pausa para asegurar que no se ejecute dos veces en el mismo segundo (improbable pero seguro)
             await asyncio.sleep(1)
-            
+
         except asyncio.CancelledError:
             logger.info("Daily reset scheduler cancelled")
             break
