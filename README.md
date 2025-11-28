@@ -15,7 +15,17 @@
 - **Modo Administrador**:
   - Acceso a bibliotecas restringidas (Evil Mode).
   - Selector de destino para publicar libros en canales o chats específicos.
-- **Límites de Descarga**: Sistema de niveles (Lector, VIP, Premium) con cuotas configurables.
+- **Límites de Descarga**: 
+  - Sistema de niveles (Lector, VIP, Premium) con cuotas configurables.
+  - Persistencia de contadores de descarga que sobreviven reinicios del bot.
+  - Reset automático diario a medianoche (00:00).
+  - Visualización del tiempo restante hasta el próximo reset en `/status`.
+- **Comandos Dinámicos**:
+  - `/help` muestra comandos específicos según el rol del usuario (Lector, Publisher, Admin).
+  - Todas las descripciones en español.
+  - Comandos básicos para todos los usuarios.
+  - Comandos adicionales para Publishers (backup, links, exportación).
+  - Comandos administrativos exclusivos para Admins (evil mode, reset, debug).
 - **Arquitectura Moderna**:
   - **Backend**: Python (FastAPI + python-telegram-bot) asíncrono.
   - **Frontend**: React (Vite) servido estáticamente.
@@ -70,32 +80,20 @@
 │   ├── telegram_service.py    # Lógica de envío de EPUBs y FB posts
 │   ├── epub_service.py        # Extracción de metadatos y títulos internos
 │   ├── opds_service.py        # Navegación de catálogos OPDS
-│   └── weekly_reports.py      # Sistema de reportes automáticos semanales
+│   ├── weekly_reports.py      # Sistema de reportes automáticos semanales
+│   ├── backup_scheduler.py    # Scheduler de backups diarios
+│   └── daily_reset_scheduler.py # Scheduler de reset de descargas a medianoche
 ├── utils/                     # Utilidades
 │   ├── security.py            # Validación de seguridad (HMAC)
 │   ├── url_cache.py           # Gestión de URLs acortadas (SQLite/PostgreSQL)
-│   └── url_validator.py       # Validación periódica de links
+│   ├── url_validator.py       # Validación periódica de links
+│   └── download_limiter.py    # Sistema de límites y persistencia de descargas
 └── tests/                     # Pruebas unitarias
 ```
 
 ***
 
 ## 🛠️ Requisitos
-
-## 📰 Novedades recientes
-Resumen breve de los últimos commits del proyecto (noviembre 2025):
-
-- 2025-11-26 (5492770): Nuevo comando `/export_db` que permite a editores exportar la base de datos a CSV.
-- 2025-11-26 (4cb2f6f): Comandos de **copia de seguridad** y **restauración** de la base de datos para editores; refactor del formato de publicación de EPUB.
-- 2025-11-26 (a52ce5d): Reportes semanales de enlaces para editores; mejoras en generación de nombres de EPUB y limpieza de metadatos; actualización del comando `/purge_link`.
-- 2025-11-26 (576b754): Extracción de títulos internos desde EPUB y análisis mejorado de series/volúmenes para generar mensajes más fiables.
-- 2025-11-26 (ab5abd8): Soporte para persistencia de URLs con PostgreSQL + SQLAlchemy; validación de enlaces en segundo plano y mejoras en la gestión de la base de datos.
-- 2025-11-25 (cff567d): Comandos para debugging y monitorización de links acortados; caché persistente con estadísticas y almacenamiento de títulos.
-- 2025-11-25 (9eee15f): Generación y publicación de posts en Facebook con caché persistente de URL corta.
-- 2025-11-24 (4332a09): Modo administrador reforzado (OPDS restringido y configuración de usuario), renombrado del servicio a `zeepubs_bot` y mensajes web mejorados.
-- 2025-11-24 (7537ae8 / 435c9d9): Inclusión del ID de usuario en la API de configuración y nuevas opciones de destino de publicación.
-
-Estas entradas están pensadas para dar contexto rápido a los contribuyentes — si desea ampliar alguna de ellas con enlaces a PRs o detalles técnicos, puedo añadirlo.
 
 - **Docker** y **Docker Compose**
 - Token de Telegram (BotFather)
