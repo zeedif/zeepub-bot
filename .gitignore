@@ -10,6 +10,7 @@
 !.github/workflows/*.yml
 !publish.sh
 !start.sh
+!.flake8
 
 # Virtualenvs
 venv/
