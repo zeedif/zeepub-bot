@@ -1,6 +1,7 @@
 """
 Sistema de caché persistente para URLs acortadas usando SQLite.
 """
+
 import sqlite3
 import hashlib
 import os
@@ -13,8 +14,17 @@ from config.config_settings import config
 _HAS_SQLALCHEMY = False
 try:
     import sqlalchemy as sa
-    from sqlalchemy import Table, Column, String, Text, Integer, Boolean, MetaData, DateTime
-    from sqlalchemy.exc import OperationalError, IntegrityError
+    from sqlalchemy import (
+        Table,
+        Column,
+        String,
+        Text,
+        Integer,
+        Boolean,
+        MetaData,
+        DateTime,
+    )
+    from sqlalchemy.exc import IntegrityError
 
     _HAS_SQLALCHEMY = True
 except Exception:
@@ -22,12 +32,15 @@ except Exception:
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_DB = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "url_cache.db")
+_DEFAULT_DB = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)), "data", "url_cache.db"
+)
 # Use config override if provided (env var or default in config)
 DB_PATH = config.URL_CACHE_DB_PATH or _DEFAULT_DB
 if not os.path.isabs(DB_PATH):
     # Resolve relative to repository root (two levels up from utils/)
     DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), DB_PATH)
+
 
 def _ensure_db_dir():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
@@ -67,7 +80,8 @@ def init_db():
     conn = _get_conn()
     try:
         cursor = conn.cursor()
-        cursor.execute("""
+        cursor.execute(
+            """
             CREATE TABLE IF NOT EXISTS url_mappings (
                 hash TEXT PRIMARY KEY,
                 url TEXT NOT NULL,
@@ -79,7 +93,8 @@ def init_db():
                 is_valid BOOLEAN DEFAULT 1,
                 failed_checks INTEGER DEFAULT 0
             )
-        """)
+        """
+        )
         conn.commit()
         logger.info(f"URL cache database initialized at {DB_PATH}")
     finally:
@@ -120,7 +135,10 @@ def _get_sa_engine():
     engine = sa.create_engine(config.DATABASE_URL, future=True, pool_pre_ping=True)
     return engine
 
-def create_short_url(url: str, book_title: str = None, series_name: str = None, volume_number: str = None) -> str:
+
+def create_short_url(
+    url: str, book_title: str = None, series_name: str = None, volume_number: str = None
+) -> str:
     """
     Crea un hash corto para una URL y lo guarda en la BD con metadata del libro.
     Si la URL ya existe, retorna el hash existente (deduplicación).
@@ -131,9 +149,9 @@ def create_short_url(url: str, book_title: str = None, series_name: str = None, 
         try:
             engine = _get_sa_engine()
             metadata = MetaData()
-            url_mappings = Table('url_mappings', metadata, autoload_with=engine)
+            url_mappings = Table("url_mappings", metadata, autoload_with=engine)
 
-            full_hash = hashlib.sha256(url.encode('utf-8')).hexdigest()
+            full_hash = hashlib.sha256(url.encode("utf-8")).hexdigest()
             base_len = 12
             url_hash = full_hash[:base_len]
 
@@ -148,7 +166,11 @@ def create_short_url(url: str, book_title: str = None, series_name: str = None, 
                         upd = (
                             url_mappings.update()
                             .where(url_mappings.c.hash == existing_hash)
-                            .values(book_title=book_title, series_name=series_name, volume_number=volume_number)
+                            .values(
+                                book_title=book_title,
+                                series_name=series_name,
+                                volume_number=volume_number,
+                            )
                         )
                         conn.execute(upd)
                     logger.debug(f"Reusing existing hash for URL: {existing_hash}")
@@ -157,27 +179,51 @@ def create_short_url(url: str, book_title: str = None, series_name: str = None, 
                 attempt = 0
                 while True:
                     try:
-                        ins = url_mappings.insert().values(hash=url_hash, url=url, book_title=book_title, series_name=series_name, volume_number=volume_number, is_valid=True)
+                        ins = url_mappings.insert().values(
+                            hash=url_hash,
+                            url=url,
+                            book_title=book_title,
+                            series_name=series_name,
+                            volume_number=volume_number,
+                            is_valid=True,
+                        )
                         conn.execute(ins)
-                        logger.debug(f"Created new URL mapping: {url_hash} -> {book_title or url[:50]}")
+                        logger.debug(
+                            f"Created new URL mapping: {url_hash} -> {book_title or url[:50]}"
+                        )
                         return url_hash
                     except IntegrityError:
                         # Collision: check if points to same URL
-                        sel2 = sa.select(url_mappings.c.url).where(url_mappings.c.hash == url_hash)
+                        sel2 = sa.select(url_mappings.c.url).where(
+                            url_mappings.c.hash == url_hash
+                        )
                         r2 = conn.execute(sel2).first()
                         if r2 and r2[0] == url:
                             return url_hash
                         attempt += 1
                         if base_len + attempt <= len(full_hash):
-                            url_hash = full_hash[: base_len + attempt ]
+                            url_hash = full_hash[: base_len + attempt]
                             continue
                         # Last attempt: use full hash and replace
                         url_hash = full_hash
-                        ins2 = sa.text("INSERT OR REPLACE INTO url_mappings (hash, url, book_title, series_name, volume_number, is_valid) VALUES (:h, :u, :bt, :sn, :vn, 1)")
-                        conn.execute(ins2, {"h": url_hash, "u": url, "bt": book_title, "sn": series_name, "vn": volume_number})
+                        ins2 = sa.text(
+                            "INSERT OR REPLACE INTO url_mappings (hash, url, book_title, series_name, volume_number, is_valid) VALUES (:h, :u, :bt, :sn, :vn, 1)"
+                        )
+                        conn.execute(
+                            ins2,
+                            {
+                                "h": url_hash,
+                                "u": url,
+                                "bt": book_title,
+                                "sn": series_name,
+                                "vn": volume_number,
+                            },
+                        )
                         return url_hash
         except Exception as e:
-            logger.exception("SQLAlchemy create_short_url failed, falling back to sqlite: %s", e)
+            logger.exception(
+                "SQLAlchemy create_short_url failed, falling back to sqlite: %s", e
+            )
             # fall through to sqlite path
 
     # SQLite native path
@@ -194,14 +240,14 @@ def create_short_url(url: str, book_title: str = None, series_name: str = None, 
             if book_title:
                 cursor.execute(
                     "UPDATE url_mappings SET book_title = ?, series_name = ?, volume_number = ? WHERE hash = ?",
-                    (book_title, series_name, volume_number, existing[0])
+                    (book_title, series_name, volume_number, existing[0]),
                 )
                 conn.commit()
             logger.debug(f"Reusing existing hash for URL: {existing[0]}")
             return existing[0]
 
         # Si no existe, generar nuevo hash SHA256 (empezamos con 12 caracteres)
-        full_hash = hashlib.sha256(url.encode('utf-8')).hexdigest()
+        full_hash = hashlib.sha256(url.encode("utf-8")).hexdigest()
         base_len = 12
         url_hash = full_hash[:base_len]
 
@@ -211,14 +257,18 @@ def create_short_url(url: str, book_title: str = None, series_name: str = None, 
             try:
                 cursor.execute(
                     "INSERT INTO url_mappings (hash, url, book_title, series_name, volume_number, is_valid) VALUES (?, ?, ?, ?, ?, 1)",
-                    (url_hash, url, book_title, series_name, volume_number)
+                    (url_hash, url, book_title, series_name, volume_number),
                 )
                 conn.commit()
-                logger.debug(f"Created new URL mapping: {url_hash} -> {book_title or url[:50]}")
+                logger.debug(
+                    f"Created new URL mapping: {url_hash} -> {book_title or url[:50]}"
+                )
                 return url_hash
             except sqlite3.IntegrityError:
                 # IntegrityError puede indicar que el hash ya existe en la tabla
-                cursor.execute("SELECT url FROM url_mappings WHERE hash = ?", (url_hash,))
+                cursor.execute(
+                    "SELECT url FROM url_mappings WHERE hash = ?", (url_hash,)
+                )
                 row = cursor.fetchone()
                 if row and row[0] == url:
                     # Otro proceso pudo haber insertado la misma URL
@@ -226,25 +276,28 @@ def create_short_url(url: str, book_title: str = None, series_name: str = None, 
                 # Si existía y apunta a otra URL, ampliar el hash y reintentar
                 attempt += 1
                 if base_len + attempt <= len(full_hash):
-                    url_hash = full_hash[: base_len + attempt ]
+                    url_hash = full_hash[: base_len + attempt]
                     continue
                 # Como último recurso usar full hash (único)
                 url_hash = full_hash
                 try:
                     cursor.execute(
                         "INSERT OR REPLACE INTO url_mappings (hash, url, book_title, series_name, volume_number, is_valid) VALUES (?, ?, ?, ?, ?, 1)",
-                        (url_hash, url, book_title, series_name, volume_number)
+                        (url_hash, url, book_title, series_name, volume_number),
                     )
                     conn.commit()
                     return url_hash
                 except Exception as e:
-                    logger.error(f"Failed to insert url mapping after collision attempts: {e}")
+                    logger.error(
+                        f"Failed to insert url mapping after collision attempts: {e}"
+                    )
                     return full_hash[:12]
     finally:
         try:
             conn.close()
         except Exception:
             pass
+
 
 def get_url_from_hash(url_hash: str) -> Optional[str]:
     """
@@ -254,7 +307,7 @@ def get_url_from_hash(url_hash: str) -> Optional[str]:
     if config.DATABASE_URL and _HAS_SQLALCHEMY:
         engine = _get_sa_engine()
         metadata = MetaData()
-        url_mappings = Table('url_mappings', metadata, autoload_with=engine)
+        url_mappings = Table("url_mappings", metadata, autoload_with=engine)
         with engine.connect() as conn:
             sel = sa.select(url_mappings.c.url).where(url_mappings.c.hash == url_hash)
             r = conn.execute(sel).first()
@@ -277,12 +330,13 @@ def get_url_from_hash(url_hash: str) -> Optional[str]:
     finally:
         conn.close()
 
+
 def count_mappings() -> int:
     """Retorna el número total de mappings almacenados."""
     if config.DATABASE_URL and _HAS_SQLALCHEMY:
         engine = _get_sa_engine()
         metadata = MetaData()
-        url_mappings = Table('url_mappings', metadata, autoload_with=engine)
+        url_mappings = Table("url_mappings", metadata, autoload_with=engine)
         with engine.connect() as conn:
             sel = sa.select(sa.func.count()).select_from(url_mappings)
             r = conn.execute(sel).scalar()
@@ -297,38 +351,52 @@ def count_mappings() -> int:
     finally:
         conn.close()
 
+
 async def validate_and_update_url(url_hash: str, url: str) -> bool:
     """Valida una URL y actualiza su estado. Retorna True si es válida."""
     import aiohttp
-    
+
     try:
         async with aiohttp.ClientSession() as session:
             # Usar GET con range limitado en lugar de HEAD para mejor compatibilidad
-            headers = {'Range': 'bytes=0-1024'}  # Solo descargar los primeros 1KB
-            async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=15), allow_redirects=True) as resp:
+            headers = {"Range": "bytes=0-1024"}  # Solo descargar los primeros 1KB
+            async with session.get(
+                url,
+                headers=headers,
+                timeout=aiohttp.ClientTimeout(total=15),
+                allow_redirects=True,
+            ) as resp:
                 # Aceptar 200 (OK) o 206 (Partial Content)
                 is_valid = 200 <= resp.status < 300
     except Exception as e:
         logger.debug("validate_and_update_url check failed for %s: %s", url_hash, e)
         is_valid = False
-    
+
     if config.DATABASE_URL and _HAS_SQLALCHEMY:
         engine = _get_sa_engine()
         metadata = MetaData()
-        url_mappings = Table('url_mappings', metadata, autoload_with=engine)
+        url_mappings = Table("url_mappings", metadata, autoload_with=engine)
         with engine.begin() as conn:
             if is_valid:
                 upd = (
                     url_mappings.update()
                     .where(url_mappings.c.hash == url_hash)
-                    .values(last_checked=sa.text("CURRENT_TIMESTAMP"), is_valid=True, failed_checks=0)
+                    .values(
+                        last_checked=sa.text("CURRENT_TIMESTAMP"),
+                        is_valid=True,
+                        failed_checks=0,
+                    )
                 )
                 conn.execute(upd)
             else:
                 upd = (
                     url_mappings.update()
                     .where(url_mappings.c.hash == url_hash)
-                    .values(last_checked=sa.text("CURRENT_TIMESTAMP"), is_valid=False, failed_checks=url_mappings.c.failed_checks + 1)
+                    .values(
+                        last_checked=sa.text("CURRENT_TIMESTAMP"),
+                        is_valid=False,
+                        failed_checks=url_mappings.c.failed_checks + 1,
+                    )
                 )
                 conn.execute(upd)
         return is_valid
@@ -341,43 +409,75 @@ async def validate_and_update_url(url_hash: str, url: str) -> bool:
             # Restablecer contador de fallos
             cursor.execute(
                 "UPDATE url_mappings SET last_checked = CURRENT_TIMESTAMP, is_valid = 1, failed_checks = 0 WHERE hash = ?",
-                (url_hash,)
+                (url_hash,),
             )
         else:
             # Incrementar contador de fallos
             cursor.execute(
                 "UPDATE url_mappings SET last_checked = CURRENT_TIMESTAMP, is_valid = 0, failed_checks = failed_checks + 1 WHERE hash = ?",
-                (url_hash,)
+                (url_hash,),
             )
-            
+
             # Borrar si alcanzó 3 fallos
-                # Auto‑deletion after 3 fallos ha sido desactivada.
-                # Se mantiene el registro para que el admin pueda revisarlo manualmente.
-                # Si deseas volver a habilitar la eliminación automática, descomenta el bloque siguiente.
-                # cursor.execute("SELECT failed_checks FROM url_mappings WHERE hash = ?", (url_hash,))
-                # result = cursor.fetchone()
-                # if result and result[0] >= 3:
-                #     cursor.execute("DELETE FROM url_mappings WHERE hash = ?", (url_hash,))
-                #     logger.warning(f"Deleted URL mapping {url_hash} after 3 failed checks")
-        
+            # Auto‑deletion after 3 fallos ha sido desactivada.
+            # Se mantiene el registro para que el admin pueda revisarlo manualmente.
+            # Si deseas volver a habilitar la eliminación automática, descomenta el bloque siguiente.
+            # cursor.execute("SELECT failed_checks FROM url_mappings WHERE hash = ?", (url_hash,))
+            # result = cursor.fetchone()
+            # if result and result[0] >= 3:
+            #     cursor.execute("DELETE FROM url_mappings WHERE hash = ?", (url_hash,))
+            #     logger.warning(f"Deleted URL mapping {url_hash} after 3 failed checks")
+
         conn.commit()
     finally:
         conn.close()
-    
+
     return is_valid
+
 
 def get_stats() -> dict:
     """Retorna estadísticas de los links."""
     if config.DATABASE_URL and _HAS_SQLALCHEMY:
         engine = _get_sa_engine()
         metadata = MetaData()
-        url_mappings = Table('url_mappings', metadata, autoload_with=engine)
+        url_mappings = Table("url_mappings", metadata, autoload_with=engine)
         with engine.connect() as conn:
-            total = conn.execute(sa.select(sa.func.count()).select_from(url_mappings)).scalar() or 0
-            valid = conn.execute(sa.select(sa.func.count()).select_from(url_mappings).where(url_mappings.c.is_valid == True)).scalar() or 0
-            broken = conn.execute(sa.select(sa.func.count()).select_from(url_mappings).where(url_mappings.c.is_valid == False)).scalar() or 0
-            at_risk = conn.execute(sa.select(sa.func.count()).select_from(url_mappings).where(url_mappings.c.failed_checks >= 2)).scalar() or 0
-            return {"total": int(total), "valid": int(valid), "broken": int(broken), "at_risk": int(at_risk)}
+            total = (
+                conn.execute(
+                    sa.select(sa.func.count()).select_from(url_mappings)
+                ).scalar()
+                or 0
+            )
+            valid = (
+                conn.execute(
+                    sa.select(sa.func.count())
+                    .select_from(url_mappings)
+                    .where(url_mappings.c.is_valid == True)
+                ).scalar()
+                or 0
+            )
+            broken = (
+                conn.execute(
+                    sa.select(sa.func.count())
+                    .select_from(url_mappings)
+                    .where(url_mappings.c.is_valid == False)
+                ).scalar()
+                or 0
+            )
+            at_risk = (
+                conn.execute(
+                    sa.select(sa.func.count())
+                    .select_from(url_mappings)
+                    .where(url_mappings.c.failed_checks >= 2)
+                ).scalar()
+                or 0
+            )
+            return {
+                "total": int(total),
+                "valid": int(valid),
+                "broken": int(broken),
+                "at_risk": int(at_risk),
+            }
 
     conn = _get_conn()
     cursor = conn.cursor()
@@ -395,23 +495,32 @@ def get_stats() -> dict:
         cursor.execute("SELECT COUNT(*) FROM url_mappings WHERE failed_checks >= 2")
         at_risk = cursor.fetchone()[0]
 
-        return {
-            "total": total,
-            "valid": valid,
-            "broken": broken,
-            "at_risk": at_risk
-        }
+        return {"total": total, "valid": valid, "broken": broken, "at_risk": at_risk}
     finally:
         conn.close()
+
 
 def get_broken_links(limit: int = 10):
     """Retorna lista de links rotos con su información."""
     if config.DATABASE_URL and _HAS_SQLALCHEMY:
         engine = _get_sa_engine()
         metadata = MetaData()
-        url_mappings = Table('url_mappings', metadata, autoload_with=engine)
+        url_mappings = Table("url_mappings", metadata, autoload_with=engine)
         with engine.connect() as conn:
-            sel = sa.select(url_mappings.c.hash, url_mappings.c.book_title, url_mappings.c.failed_checks, url_mappings.c.last_checked).where(url_mappings.c.is_valid == False).order_by(sa.desc(url_mappings.c.failed_checks), sa.desc(url_mappings.c.last_checked)).limit(limit)
+            sel = (
+                sa.select(
+                    url_mappings.c.hash,
+                    url_mappings.c.book_title,
+                    url_mappings.c.failed_checks,
+                    url_mappings.c.last_checked,
+                )
+                .where(url_mappings.c.is_valid == False)
+                .order_by(
+                    sa.desc(url_mappings.c.failed_checks),
+                    sa.desc(url_mappings.c.last_checked),
+                )
+                .limit(limit)
+            )
             return list(conn.execute(sel).all())
 
     conn = _get_conn()
@@ -424,7 +533,7 @@ def get_broken_links(limit: int = 10):
                WHERE is_valid = 0 
                ORDER BY failed_checks DESC, last_checked DESC 
                LIMIT ?""",
-            (limit,)
+            (limit,),
         )
         return cursor.fetchall()
     finally:
@@ -439,8 +548,17 @@ def get_recent_links(limit: int = 20):
     if config.DATABASE_URL and _HAS_SQLALCHEMY:
         engine = _get_sa_engine()
         metadata = MetaData()
-        url_mappings = Table('url_mappings', metadata, autoload_with=engine)
-        sel = sa.select(url_mappings.c.hash, url_mappings.c.url, url_mappings.c.book_title, url_mappings.c.created_at).order_by(sa.desc(url_mappings.c.created_at)).limit(limit)
+        url_mappings = Table("url_mappings", metadata, autoload_with=engine)
+        sel = (
+            sa.select(
+                url_mappings.c.hash,
+                url_mappings.c.url,
+                url_mappings.c.book_title,
+                url_mappings.c.created_at,
+            )
+            .order_by(sa.desc(url_mappings.c.created_at))
+            .limit(limit)
+        )
         with engine.connect() as conn:
             return [tuple(r) for r in conn.execute(sel).all()]
 
@@ -452,7 +570,7 @@ def get_recent_links(limit: int = 20):
                FROM url_mappings
                ORDER BY created_at DESC
                LIMIT ?""",
-            (limit,)
+            (limit,),
         )
         return cursor.fetchall()
     finally:
@@ -473,31 +591,38 @@ def get_candidates_for_validation(limit: int = 100, older_than_seconds: int = 36
     if config.DATABASE_URL and _HAS_SQLALCHEMY:
         engine = _get_sa_engine()
         metadata = MetaData()
-        url_mappings = Table('url_mappings', metadata, autoload_with=engine)
-        from sqlalchemy import func
+        url_mappings = Table("url_mappings", metadata, autoload_with=engine)
+
         with engine.connect() as conn:
-            sel = sa.select(url_mappings.c.hash, url_mappings.c.url).where(
-                sa.or_(url_mappings.c.last_checked == None,
-                       url_mappings.c.last_checked < cutoff,
-                       url_mappings.c.is_valid == False)
-            ).limit(limit)
+            sel = (
+                sa.select(url_mappings.c.hash, url_mappings.c.url)
+                .where(
+                    sa.or_(
+                        url_mappings.c.last_checked == None,
+                        url_mappings.c.last_checked < cutoff,
+                        url_mappings.c.is_valid == False,
+                    )
+                )
+                .limit(limit)
+            )
             return [tuple(r) for r in conn.execute(sel).all()]
 
     conn = _get_conn()
     cursor = conn.cursor()
     try:
         # Use a concrete cutoff string so it's portable across SQLite/Postgres
-        cutoff_str = cutoff.isoformat(sep=' ', timespec='seconds')
+        cutoff_str = cutoff.isoformat(sep=" ", timespec="seconds")
         cursor.execute(
             """SELECT hash, url FROM url_mappings
                WHERE last_checked IS NULL OR last_checked < ?
                  OR is_valid = 0
                LIMIT ?""",
-            (cutoff_str, limit)
+            (cutoff_str, limit),
         )
         return cursor.fetchall()
     finally:
         conn.close()
+
 
 # Inicializar BD al importar el módulo
 try:

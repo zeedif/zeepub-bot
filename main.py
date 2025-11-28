@@ -9,6 +9,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
 def main():
     logger.info("Iniciando ZeePub Bot...")
     is_valid, missing = config.validate()
@@ -19,6 +20,7 @@ def main():
     bot = ZeePubBot()
     bot.start()
     logger.info("Bot detenido.")
+
 
 if __name__ == "__main__":
     main()

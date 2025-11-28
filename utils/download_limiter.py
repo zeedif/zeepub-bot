@@ -4,6 +4,7 @@ from typing import Union
 from config.config_settings import config
 from core.state_manager import state_manager
 
+
 def downloads_left(uid: int) -> Union[int, str]:
     """
     Devuelve el número de descargas restantes según el nivel de usuario:
@@ -28,6 +29,7 @@ def downloads_left(uid: int) -> Union[int, str]:
     remaining = max_dl - used
     return remaining if remaining > 0 else 0
 
+
 def can_download(uid: int) -> bool:
     """
     Comprueba si el usuario aún puede descargar:
@@ -38,6 +40,7 @@ def can_download(uid: int) -> bool:
     if left == "ilimitadas":
         return True
     return left > 0
+
 
 def record_download(uid: int) -> None:
     """

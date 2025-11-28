@@ -15,6 +15,7 @@ from utils.http_client import parse_feed_from_url
 
 logger = logging.getLogger(__name__)
 
+
 async def set_destino(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     try:
@@ -30,12 +31,14 @@ async def set_destino(update: Update, context: ContextTypes.DEFAULT_TYPE):
         st["destino"] = update.effective_chat.id if destino == "aqui" else destino
         st["titulo"] = "📚 Categorías"
         await query.answer("✅ Destino seleccionado")
-        
+
         # Si no es admin, ir directamente a ZeePubs [ES]
         if uid not in config.ADMIN_USERS:
             await buscar_zeepubs_directo(update, context, uid)
         else:
-            await mostrar_colecciones(update, context, st["opds_root"], from_collection=False)
+            await mostrar_colecciones(
+                update, context, st["opds_root"], from_collection=False
+            )
         return
 
     # Destino manual
@@ -59,6 +62,7 @@ async def handle_manual_destino(update: Update, context: ContextTypes.DEFAULT_TY
     # Mostrar colecciones Evil con el nuevo destino
     await mostrar_colecciones(update, context, st["opds_root"], from_collection=False)
 
+
 async def buscar_epub(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     try:
@@ -68,20 +72,20 @@ async def buscar_epub(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     st = state_manager.get_user_state(uid)
     chat = update.effective_chat
-    
+
     # En chats privados, siempre usar texto libre
-    if chat.type == 'private':
+    if chat.type == "private":
         st["esperando_busqueda"] = True
         await query.edit_message_text("🔍 Escribe parte del título del EPUB:")
         return
-    
+
     # En grupos, verificar si el bot es administrador
     try:
         bot_member = await context.bot.get_chat_member(chat.id, context.bot.id)
-        is_admin = bot_member.status in ['administrator', 'creator']
+        is_admin = bot_member.status in ["administrator", "creator"]
     except Exception:
         is_admin = False
-    
+
     if is_admin:
         # Bot es admin: puede recibir mensajes normales
         st["esperando_busqueda"] = True
@@ -92,7 +96,7 @@ async def buscar_epub(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "🔍 Para buscar, usa el comando:\n\n"
             "<code>/search término de búsqueda</code>\n\n"
             "Ejemplo: <code>/search harry potter</code>",
-            parse_mode="HTML"
+            parse_mode="HTML",
         )
 
 
@@ -108,8 +112,10 @@ async def handle_search_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
     # Lanza búsqueda y muestra resultados
     await buscar_zeepubs_directo(update, context, uid, termino)
 
+
 async def abrir_zeepubs(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await buscar_zeepubs_directo(update, context, update.effective_user.id)
+
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -127,41 +133,51 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         col = st["colecciones"].get(idx)
         if col:
             titulo_col = col.get("titulo", "").lower()
-            
+
             # Si no es admin y es "Todas las bibliotecas", saltar a ZeePubs [ES] directamente
             if uid not in config.ADMIN_USERS and "todas las bibliotecas" in titulo_col:
                 from services.opds_service import get_zeepubs_first_library
-                
+
                 root_page = {
                     "titulo": "📚 Todas las bibliotecas",
                     "url": st.get("opds_root"),
-                    "type": "root"
+                    "type": "root",
                 }
                 st["historial"] = [root_page]
                 st["titulo"] = "📁 Biblioteca ZeePubs"
-                
+
                 zeepubs_first_url = await get_zeepubs_first_library(st.get("opds_root"))
-                await mostrar_colecciones(update, context, zeepubs_first_url, from_collection=True)
+                await mostrar_colecciones(
+                    update, context, zeepubs_first_url, from_collection=True
+                )
             else:
                 # Navegar normalmente a la colección (para admins o colecciones que no sean "Todas las bibliotecas")
                 current_page = {
                     "titulo": st.get("titulo", ""),
                     "url": st.get("url", ""),
-                    "type": "collection"
+                    "type": "collection",
                 }
                 if "historial" not in st:
                     st["historial"] = []
                 st["historial"].append(current_page)
-                
+
                 st["titulo"] = f"📁 {col['titulo']}"
                 st["url"] = col["href"]
-                await mostrar_colecciones(update, context, col["href"], from_collection=True)
+                await mostrar_colecciones(
+                    update, context, col["href"], from_collection=True
+                )
         return
 
     # Selección de libro
     if data.startswith("lib|"):
         # Limpiar estado temporal de libro anterior
-        for k in ("epub_buffer", "meta_pendiente", "portada_pendiente", "titulo_pendiente", "fb_caption"):
+        for k in (
+            "epub_buffer",
+            "meta_pendiente",
+            "portada_pendiente",
+            "titulo_pendiente",
+            "fb_caption",
+        ):
             st.pop(k, None)
         key = data.split("|", 1)[1]
         libro = st["libros"].get(key)
@@ -181,18 +197,18 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if actual_destino == chat_origen:
             try:
                 await context.bot.delete_message(
-                    chat_id=chat_origen,
-                    message_id=query.message.message_id
+                    chat_id=chat_origen, message_id=query.message.message_id
                 )
             except Exception:
                 logger.debug("No se pudo borrar menú")
             try:
                 from utils.helpers import get_thread_id
+
                 thread_id = st.get("message_thread_id")  # Usar el guardado
                 prep = await context.bot.send_message(
                     chat_id=chat_origen,
                     text="⏳ Preparando...",
-                    message_thread_id=thread_id
+                    message_thread_id=thread_id,
                 )
                 menu_prep = (chat_origen, prep.message_id)
             except Exception as e:
@@ -205,25 +221,30 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 st["pending_pub_book"] = {
                     "titulo": libro.get("titulo", ""),
                     "portada": libro.get("portada", ""),
-                    "href": href
+                    "href": href,
                 }
                 st["pending_pub_menu_prep"] = menu_prep
                 st["publish_command_origin"] = update.effective_chat.id
                 st["publish_command_thread_id"] = st.get("message_thread_id")
                 from services.telegram_service import _publish_choice_facebook
+
                 await _publish_choice_facebook(update, context, uid)
                 return
             elif default_target == "telegram":
                 await publicar_libro(
-                    update, context, uid,
+                    update,
+                    context,
+                    uid,
                     libro["titulo"],
                     libro.get("portada", ""),
                     href,
-                    menu_prep=menu_prep
+                    menu_prep=menu_prep,
                 )
                 if actual_destino != chat_origen:
                     try:
-                        await query.edit_message_text(f"✅ Publicado: {libro['titulo']}")
+                        await query.edit_message_text(
+                            f"✅ Publicado: {libro['titulo']}"
+                        )
                     except Exception:
                         logger.debug("Error al editar confirmación")
                 return
@@ -231,11 +252,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Publicar EPUB (non-publishers or publisher with no temp)
         await publicar_libro(
-            update, context, uid,
+            update,
+            context,
+            uid,
             libro["titulo"],
             libro.get("portada", ""),
             href,
-            menu_prep=menu_prep
+            menu_prep=menu_prep,
         )
         if actual_destino != chat_origen:
             try:
@@ -249,9 +272,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         choice = data.split("|", 1)[1]
         uid = update.effective_user.id
         st = state_manager.get_user_state(uid)
-        logger.debug("publish_target callback for uid=%s choice=%s pending=%s origin=%s", uid, choice, st.get('pending_pub_book'), st.get('publish_command_origin'))
+        logger.debug(
+            "publish_target callback for uid=%s choice=%s pending=%s origin=%s",
+            uid,
+            choice,
+            st.get("pending_pub_book"),
+            st.get("publish_command_origin"),
+        )
         if choice == "facebook":
             from services.telegram_service import _publish_choice_facebook
+
             await _publish_choice_facebook(update, context, uid)
         elif choice == "telegram":
             # Continue publishing using stored pending data
@@ -264,7 +294,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 menu_prep = st.pop("pending_pub_menu_prep", None)
                 st.pop("pending_pub_book", None)
                 # Call publicar_libro using stored href/portada/title
-                await publicar_libro(update, context, uid, pending.get("titulo"), pending.get("portada"), pending.get("href"), menu_prep=menu_prep)
+                await publicar_libro(
+                    update,
+                    context,
+                    uid,
+                    pending.get("titulo"),
+                    pending.get("portada"),
+                    pending.get("href"),
+                    menu_prep=menu_prep,
+                )
         else:
             # Cancel / Exit
             st.pop("pending_pub_book", None)
@@ -296,7 +334,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             # Set one-time publish target that will be popped at next selection
             st["publish_target_temp"] = choice
-            text = f"✅ Publicación temporal establecida para el próximo libro: {choice}."
+            text = (
+                f"✅ Publicación temporal establecida para el próximo libro: {choice}."
+            )
 
         # For non-admin publishers, proceed to show the normal collections
         # menu now (but don't ask for Evil destination). If the user picked
@@ -325,17 +365,25 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 st["opds_root_base"] = config.OPDS_ROOT_EVIL
                 st["historial"] = []
                 st["ultima_pagina"] = config.OPDS_ROOT_EVIL
-                
+
                 keyboard = [
                     [InlineKeyboardButton("📍 Aquí", callback_data="destino|aqui")],
-                    [InlineKeyboardButton("📣 BotTest", callback_data="destino|@ZeePubBotTest")],
-                    [InlineKeyboardButton("📣 ZeePubs", callback_data="destino|@ZeePubs")],
-                    [InlineKeyboardButton("✏️ Otro", callback_data="destino|otro")]
+                    [
+                        InlineKeyboardButton(
+                            "📣 BotTest", callback_data="destino|@ZeePubBotTest"
+                        )
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            "📣 ZeePubs", callback_data="destino|@ZeePubs"
+                        )
+                    ],
+                    [InlineKeyboardButton("✏️ Otro", callback_data="destino|otro")],
                 ]
                 try:
                     await query.edit_message_text(
                         text="🔧 Modo Evil: ¿Dónde quieres publicar?",
-                        reply_markup=InlineKeyboardMarkup(keyboard)
+                        reply_markup=InlineKeyboardMarkup(keyboard),
                     )
                 except Exception:
                     try:
@@ -353,14 +401,20 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 st["destino"] = update.effective_chat.id
                 st["chat_origen"] = update.effective_chat.id
                 try:
-                    await query.edit_message_text("✅ Publicación temporal en Facebook seleccionada — entrando a Evil (publicación en este chat).")
+                    await query.edit_message_text(
+                        "✅ Publicación temporal en Facebook seleccionada — entrando a Evil (publicación en este chat)."
+                    )
                 except Exception:
                     try:
-                        await query.answer("🔧 Publicación temporal en Facebook seleccionada — entrando a Evil")
+                        await query.answer(
+                            "🔧 Publicación temporal en Facebook seleccionada — entrando a Evil"
+                        )
                     except Exception:
                         pass
                 # show evil collections directly
-                await mostrar_colecciones(update, context, st["opds_root"], from_collection=False)
+                await mostrar_colecciones(
+                    update, context, st["opds_root"], from_collection=False
+                )
                 return
         try:
             await query.edit_message_text(text)
@@ -375,13 +429,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "subir_nivel":
         if "historial" not in st:
             st["historial"] = []
-        
+
         if st["historial"]:
             last_page = st["historial"].pop()
             if last_page and last_page.get("url"):
                 st["titulo"] = last_page["titulo"]
                 st["url"] = last_page["url"]
-                await mostrar_colecciones(update, context, last_page["url"], from_collection=True)
+                await mostrar_colecciones(
+                    update, context, last_page["url"], from_collection=True
+                )
             else:
                 root = st.get("opds_root_base") or st.get("opds_root")
                 st["titulo"] = "📚 Categorías"
@@ -428,7 +484,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             st["titulo"] = "📚 Última página"
             st["url"] = last_url
             # Usar new_message=True para que no borre el mensaje del libro
-            await mostrar_colecciones(update, context, last_url, from_collection=True, new_message=True)
+            await mostrar_colecciones(
+                update, context, last_url, from_collection=True, new_message=True
+            )
         else:
             # Si no hay última página guardada, usar historial como antes
             if "historial" not in st:
@@ -438,17 +496,27 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if last_page and last_page.get("url"):
                     st["titulo"] = last_page["titulo"]
                     st["url"] = last_page["url"]
-                    await mostrar_colecciones(update, context, last_page["url"], from_collection=True, new_message=True)
+                    await mostrar_colecciones(
+                        update,
+                        context,
+                        last_page["url"],
+                        from_collection=True,
+                        new_message=True,
+                    )
                 else:
                     root = st.get("opds_root_base") or st.get("opds_root")
                     st["titulo"] = "📚 Categorías"
                     st["url"] = root
-                    await mostrar_colecciones(update, context, root, from_collection=False, new_message=True)
+                    await mostrar_colecciones(
+                        update, context, root, from_collection=False, new_message=True
+                    )
             else:
                 root = st.get("opds_root_base") or st.get("opds_root")
                 st["titulo"] = "📚 Categorías"
                 st["url"] = root
-                await mostrar_colecciones(update, context, root, from_collection=False, new_message=True)
+                await mostrar_colecciones(
+                    update, context, root, from_collection=False, new_message=True
+                )
         return
 
     # Cerrar menú
@@ -463,12 +531,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.debug("Could not answer callback for descargar_epub: %s", e)
         from services.telegram_service import descargar_epub_pendiente
+
         await descargar_epub_pendiente(update, context, uid)
         return
 
     # Facebook handlers
     if data == "preparar_post_fb":
         from services.telegram_service import preparar_post_facebook
+
         await preparar_post_facebook(update, context, uid)
         try:
             await query.answer()
@@ -478,6 +548,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data == "publicar_fb":
         from services.telegram_service import publicar_facebook_action
+
         await publicar_facebook_action(update, context, uid)
         try:
             await query.answer()
@@ -501,11 +572,19 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.debug("Could not discard FB preview buttons: %s", e)
         return
 
+
 def register_handlers(app):
     # CallbackQuery handlers
     app.add_handler(CallbackQueryHandler(set_destino, pattern="^destino\\|"))
     app.add_handler(CallbackQueryHandler(buscar_epub, pattern="^buscar$"))
-    app.add_handler(CallbackQueryHandler(button_handler, pattern="^(col\\||lib\\||nav\\||subir_nivel|volver_colecciones|volver_ultima|cerrar|descargar_epub|preparar_post_fb|publicar_fb|descartar_fb|publish_target\\||set_publish_temp\\|)"))
+    app.add_handler(
+        CallbackQueryHandler(
+            button_handler,
+            pattern="^(col\\||lib\\||nav\\||subir_nivel|volver_colecciones|volver_ultima|cerrar|descargar_epub|preparar_post_fb|publicar_fb|descartar_fb|publish_target\\||set_publish_temp\\|)",
+        )
+    )
     # Texto libre handlers
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_manual_destino))
+    app.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_manual_destino)
+    )
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_search_text))

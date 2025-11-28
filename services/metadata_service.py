@@ -9,6 +9,7 @@ from utils.helpers import limpiar_html_basico
 
 logger = logging.getLogger(__name__)
 
+
 async def obtener_sinopsis_opds(series_id: str) -> Optional[str]:
     """Obtiene la sinopsis de una serie desde OPDS."""
     if not series_id:
@@ -22,7 +23,8 @@ async def obtener_sinopsis_opds(series_id: str) -> Optional[str]:
             content = data
         else:
             import aiofiles
-            async with aiofiles.open(data, 'rb') as f:
+
+            async with aiofiles.open(data, "rb") as f:
                 content = await f.read()
         root = ET.fromstring(content)
         ns = {"atom": "http://www.w3.org/2005/Atom"}
@@ -35,7 +37,10 @@ async def obtener_sinopsis_opds(series_id: str) -> Optional[str]:
         cleanup_tmp(data)
     return None
 
-async def obtener_sinopsis_opds_volumen(series_id: str, volume_id: str) -> Optional[str]:
+
+async def obtener_sinopsis_opds_volumen(
+    series_id: str, volume_id: str
+) -> Optional[str]:
     """Obtiene la sinopsis específica de un volumen."""
     if not series_id or not volume_id:
         return None
@@ -48,7 +53,8 @@ async def obtener_sinopsis_opds_volumen(series_id: str, volume_id: str) -> Optio
             content = data
         else:
             import aiofiles
-            async with aiofiles.open(data, 'rb') as f:
+
+            async with aiofiles.open(data, "rb") as f:
                 content = await f.read()
         root = ET.fromstring(content)
         ns = {"atom": "http://www.w3.org/2005/Atom"}
@@ -64,6 +70,7 @@ async def obtener_sinopsis_opds_volumen(series_id: str, volume_id: str) -> Optio
     finally:
         cleanup_tmp(data)
     return None
+
 
 async def obtener_metadatos_opds(series_id: str, volume_id: str) -> Dict[str, Any]:
     """Extrae metadatos (título, autor, géneros, etc.) desde OPDS."""
@@ -90,7 +97,8 @@ async def obtener_metadatos_opds(series_id: str, volume_id: str) -> Dict[str, An
             content = data
         else:
             import aiofiles
-            async with aiofiles.open(data, 'rb') as f:
+
+            async with aiofiles.open(data, "rb") as f:
                 content = await f.read()
         root = ET.fromstring(content)
         ns = {"atom": "http://www.w3.org/2005/Atom", "dc": "http://purl.org/dc/terms/"}
@@ -102,7 +110,9 @@ async def obtener_metadatos_opds(series_id: str, volume_id: str) -> Dict[str, An
 
         # Entrada del volumen
         for entry in root.findall("atom:entry", ns):
-            hrefs = [link.attrib.get("href", "") for link in entry.findall("atom:link", ns)]
+            hrefs = [
+                link.attrib.get("href", "") for link in entry.findall("atom:link", ns)
+            ]
             if any(f"/volume/{volume_id}/" in href for href in hrefs):
                 # Título volumen
                 title_el = entry.find("atom:title", ns)

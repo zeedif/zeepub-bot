@@ -3,6 +3,7 @@
 from typing import Dict, Any
 from config.config_settings import config
 
+
 class StateManager:
     """Gestión de estado por usuario en memoria."""
 
@@ -31,6 +32,7 @@ class StateManager:
                 "msg_que_hacer": None,
             }
         return self.user_state[uid]
+
 
 # Instancia global
 state_manager = StateManager()

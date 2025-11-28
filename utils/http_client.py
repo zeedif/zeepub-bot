@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 MAX_IN_MEMORY_BYTES = 10 * 1024 * 1024  # 10MB
 
+
 def cleanup_tmp(path):
     """Elimina archivo temporal si existe."""
     if isinstance(path, str) and os.path.exists(path):
@@ -21,7 +22,10 @@ def cleanup_tmp(path):
         except Exception:
             pass
 
-async def fetch_bytes(url: str, session: aiohttp.ClientSession = None, timeout: int = 15) -> Union[bytes, str, None]:
+
+async def fetch_bytes(
+    url: str, session: aiohttp.ClientSession = None, timeout: int = 15
+) -> Union[bytes, str, None]:
     """
     Descarga el contenido de `url`. Si supera MAX_IN_MEMORY_BYTES escribe a fichero temporal.
     Retorna bytes o ruta al fichero temporal, o None en error.
@@ -46,10 +50,16 @@ async def fetch_bytes(url: str, session: aiohttp.ClientSession = None, timeout: 
                         # Offload blocking disk writes to threadpool
                         await asyncio.to_thread(tmp.write, chunk)
                     tmp.close()
-                    logger.debug("fetch_bytes devolvió archivo temporal: %s (%d bytes)", tmp.name, total)
+                    logger.debug(
+                        "fetch_bytes devolvió archivo temporal: %s (%d bytes)",
+                        tmp.name,
+                        total,
+                    )
                     return tmp.name
                 except Exception as e:
-                    logger.error("Error al escribir chunks en tmpfile %s: %s", tmp.name, e)
+                    logger.error(
+                        "Error al escribir chunks en tmpfile %s: %s", tmp.name, e
+                    )
                     try:
                         os.unlink(tmp.name)
                     except Exception:
@@ -64,10 +74,16 @@ async def fetch_bytes(url: str, session: aiohttp.ClientSession = None, timeout: 
                     # Write the whole payload to disk via threadpool to avoid blocking
                     await asyncio.to_thread(tmp.write, data)
                     tmp.close()
-                    logger.debug("fetch_bytes devolvió archivo temporal por tamaño real: %s (%d bytes)", tmp.name, length)
+                    logger.debug(
+                        "fetch_bytes devolvió archivo temporal por tamaño real: %s (%d bytes)",
+                        tmp.name,
+                        length,
+                    )
                     return tmp.name
                 except Exception as e:
-                    logger.error("Error al escribir data en tmpfile %s: %s", tmp.name, e)
+                    logger.error(
+                        "Error al escribir data en tmpfile %s: %s", tmp.name, e
+                    )
                     try:
                         os.unlink(tmp.name)
                     except Exception:
@@ -78,6 +94,7 @@ async def fetch_bytes(url: str, session: aiohttp.ClientSession = None, timeout: 
     except Exception as e:
         logger.error("Error fetch_bytes %s: %s", url, e)
         return None
+
 
 async def parse_feed_from_url(url: str):
     """
@@ -96,7 +113,9 @@ async def parse_feed_from_url(url: str):
                 with open(data, "rb") as f:
                     content = f.read()
             except Exception as e:
-                logger.error("parse_feed_from_url: error leyendo tmpfile %s: %s", data, e)
+                logger.error(
+                    "parse_feed_from_url: error leyendo tmpfile %s: %s", data, e
+                )
                 return None
             feed = await asyncio.to_thread(feedparser.parse, content)
         else:

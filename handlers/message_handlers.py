@@ -12,13 +12,14 @@ from utils.helpers import get_thread_id
 
 logger = logging.getLogger(__name__)
 
+
 async def recibir_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Maneja mensajes de texto cuando se espera input del usuario."""
     uid = update.effective_user.id
     st = state_manager.get_user_state(uid)
     text = update.message.text.strip()
     chat_type = update.effective_chat.type
-    
+
     thread_id = get_thread_id(update)
 
     # 1) Contraseña para modo 'evil'
@@ -27,7 +28,11 @@ async def recibir_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if text == config.get_six_hour_password():
             keyboard = [
                 [InlineKeyboardButton("📍 Aquí", callback_data="destino|aqui")],
-                [InlineKeyboardButton("📢 BotTest", callback_data="destino|@ZeePubBotTest")],
+                [
+                    InlineKeyboardButton(
+                        "📢 BotTest", callback_data="destino|@ZeePubBotTest"
+                    )
+                ],
                 [InlineKeyboardButton("📢 ZeePubs", callback_data="destino|@ZeePubs")],
                 [InlineKeyboardButton("✏️ Otro", callback_data="destino|otro")],
             ]
@@ -46,20 +51,20 @@ async def recibir_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         chat_id=update.effective_chat.id,
                         text="✅ Contraseña correcta. Elige destino:",
                         reply_markup=InlineKeyboardMarkup(keyboard),
-                        message_thread_id=thread_id
+                        message_thread_id=thread_id,
                     )
             else:
                 await context.bot.send_message(
                     chat_id=update.effective_chat.id,
                     text="✅ Contraseña correcta. Elige destino:",
                     reply_markup=InlineKeyboardMarkup(keyboard),
-                    message_thread_id=thread_id
+                    message_thread_id=thread_id,
                 )
         else:
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
                 text="❌ Contraseña incorrecta.",
-                message_thread_id=thread_id
+                message_thread_id=thread_id,
             )
         return
 
@@ -67,7 +72,9 @@ async def recibir_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if st.get("esperando_destino_manual"):
         st["esperando_destino_manual"] = False
         st["destino"] = text
-        await mostrar_colecciones(update, context, st["opds_root"], from_collection=False)
+        await mostrar_colecciones(
+            update, context, st["opds_root"], from_collection=False
+        )
         return
 
     # 3) Búsqueda de EPUB
@@ -81,22 +88,28 @@ async def recibir_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not feed or not getattr(feed, "entries", []):
             keyboard = [
                 [InlineKeyboardButton("🔄 Volver a buscar", callback_data="buscar")],
-                [InlineKeyboardButton("📚 Ir a colecciones", callback_data="volver_colecciones")],
+                [
+                    InlineKeyboardButton(
+                        "📚 Ir a colecciones", callback_data="volver_colecciones"
+                    )
+                ],
             ]
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
                 text=f"🔍 No se encontraron resultados para: {text}",
                 reply_markup=InlineKeyboardMarkup(keyboard),
-                message_thread_id=thread_id
+                message_thread_id=thread_id,
             )
         else:
             logger.debug(f"Encontrados {len(feed.entries)} resultados")
-            await mostrar_colecciones(update, context, search_url, from_collection=False)
+            await mostrar_colecciones(
+                update, context, search_url, from_collection=False
+            )
         return
 
     # 4) Cualquier otro texto - solo responder en chats privados
-    if chat_type == 'private':
+    if chat_type == "private":
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="Usa /start para comenzar o selecciona una opción del menú."
+            text="Usa /start para comenzar o selecciona una opción del menú.",
         )

@@ -9,69 +9,82 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
 @dataclass
 class BotConfig:
     TELEGRAM_TOKEN: str = os.getenv("TELEGRAM_TOKEN", "")
-    
+
     # Dominio público (ej: zp-dev.sp-core.xyz o zeepub-bot.sp-core.xyz)
     PUBLIC_DOMAIN: str = os.getenv("PUBLIC_DOMAIN", "")
-    
+
     # Si no se define BASE_URL, se construye usando PUBLIC_DOMAIN
     BASE_URL: str = os.getenv("BASE_URL", "")
-    
+
     # URL base del servidor OPDS (ej: https://apps.tailfe99c.ts.net)
     OPDS_SERVER_URL: str = os.getenv("OPDS_SERVER_URL", "")
-    
+
     # URL de la Mini App (para botones y referencias)
     WEBAPP_URL: str = os.getenv("WEBAPP_URL", "")
-    
+
     # Variables originales del .env (son los sufijos/rutas)
     OPDS_ROOT_START_SUFFIX: str = os.getenv("OPDS_ROOT_START", "")
     OPDS_ROOT_EVIL_SUFFIX: str = os.getenv("OPDS_ROOT_EVIL", "")
-    
+
     SECRET_SEED: str = os.getenv("SECRET_SEED", "")
 
     # Administradores (no tienen descargas ilimitadas aquí)
-    ADMIN_USERS: Set[int] = field(default_factory=lambda: {
-        int(x.strip())
-        for x in os.getenv("ADMIN_USERS", "").split(",")
-        if x.strip().isdigit()
-    })
+    ADMIN_USERS: Set[int] = field(
+        default_factory=lambda: {
+            int(x.strip())
+            for x in os.getenv("ADMIN_USERS", "").split(",")
+            if x.strip().isdigit()
+        }
+    )
 
     # Listas de usuarios con distintos niveles
-    WHITELIST: Set[int] = field(default_factory=lambda: {
-        int(x.strip())
-        for x in os.getenv("WHITELIST", "").split(",")
-        if x.strip().isdigit()
-    })
-    VIP_LIST: Set[int] = field(default_factory=lambda: {
-        int(x.strip())
-        for x in os.getenv("VIP_LIST", "").split(",")
-        if x.strip().isdigit()
-    })
-    PREMIUM_LIST: Set[int] = field(default_factory=lambda: {
-        int(x.strip())
-        for x in os.getenv("PREMIUM_LIST", "").split(",")
-        if x.strip().isdigit()
-    })
-    
+    WHITELIST: Set[int] = field(
+        default_factory=lambda: {
+            int(x.strip())
+            for x in os.getenv("WHITELIST", "").split(",")
+            if x.strip().isdigit()
+        }
+    )
+    VIP_LIST: Set[int] = field(
+        default_factory=lambda: {
+            int(x.strip())
+            for x in os.getenv("VIP_LIST", "").split(",")
+            if x.strip().isdigit()
+        }
+    )
+    PREMIUM_LIST: Set[int] = field(
+        default_factory=lambda: {
+            int(x.strip())
+            for x in os.getenv("PREMIUM_LIST", "").split(",")
+            if x.strip().isdigit()
+        }
+    )
+
     # Facebook Publishers
-    FACEBOOK_PUBLISHERS: Set[int] = field(default_factory=lambda: {
-        int(x.strip())
-        for x in os.getenv("FACEBOOK_PUBLISHERS", "").split(",")
-        if x.strip().isdigit()
-    })
-    
+    FACEBOOK_PUBLISHERS: Set[int] = field(
+        default_factory=lambda: {
+            int(x.strip())
+            for x in os.getenv("FACEBOOK_PUBLISHERS", "").split(",")
+            if x.strip().isdigit()
+        }
+    )
+
     # Facebook Credentials
     FACEBOOK_PAGE_ACCESS_TOKEN: str = os.getenv("FACEBOOK_PAGE_ACCESS_TOKEN", "")
     FACEBOOK_GROUP_ID: str = os.getenv("FACEBOOK_GROUP_ID", "")
-    
+
     # Domain for public downloads
     DL_DOMAIN: str = os.getenv("DL_DOMAIN", "dl.zeepubs.com")
 
     # Límites por hora
     MAX_DOWNLOADS_PER_DAY: int = int(os.getenv("MAX_DOWNLOADS_PER_DAY", "5"))
-    WHITELIST_DOWNLOADS_PER_DAY: int = int(os.getenv("WHITELIST_DOWNLOADS_PER_DAY", "10"))
+    WHITELIST_DOWNLOADS_PER_DAY: int = int(
+        os.getenv("WHITELIST_DOWNLOADS_PER_DAY", "10")
+    )
     VIP_DOWNLOADS_PER_DAY: int = int(os.getenv("VIP_DOWNLOADS_PER_DAY", "20"))
 
     # Otros ajustes
@@ -86,7 +99,6 @@ class BotConfig:
     # Optional SQLAlchemy URL for external DB (Postgres, MySQL etc.). If provided
     # url_cache will prefer this over the local SQLite file.
     DATABASE_URL: str = os.getenv("DATABASE_URL", "")
-
 
     @property
     def OPDS_ROOT_START(self) -> str:
@@ -103,17 +115,17 @@ class BotConfig:
         errors: List[str] = []
         if not self.TELEGRAM_TOKEN:
             errors.append("TELEGRAM_TOKEN")
-            
+
         # Lógica para URLs dinámicas
         if not self.BASE_URL and self.PUBLIC_DOMAIN:
             self.BASE_URL = f"https://{self.PUBLIC_DOMAIN}"
-            
+
         if not self.WEBAPP_URL and self.PUBLIC_DOMAIN:
             self.WEBAPP_URL = f"https://{self.PUBLIC_DOMAIN}"
 
         if not self.BASE_URL:
             errors.append("BASE_URL (or PUBLIC_DOMAIN)")
-            
+
         # Validar que al menos tengamos los sufijos (usando los nombres del .env)
         if not self.OPDS_ROOT_START_SUFFIX:
             errors.append("OPDS_ROOT_START")
@@ -135,5 +147,6 @@ class BotConfig:
         raw = f"{self.SECRET_SEED}{now.year}-{now.month}-{now.day}-B{block}"
         sha = hashlib.sha256(raw.encode("utf-8")).hexdigest()
         return sha[:8]
+
 
 config = BotConfig()

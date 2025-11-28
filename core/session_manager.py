@@ -4,6 +4,7 @@ import aiohttp
 import asyncio
 import logging
 
+
 class SessionManager:
     """Gestión única de la sesión HTTP y locks por usuario."""
 
@@ -36,6 +37,7 @@ class SessionManager:
             self.logger.debug("Cerrando sesión HTTP.")
             asyncio.get_event_loop().run_until_complete(self._session.close())
             self._session = None
+
 
 # Instancia global
 session_manager = SessionManager()

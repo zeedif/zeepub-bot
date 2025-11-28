@@ -2,20 +2,27 @@
 
 import logging
 from telegram.ext import (
-    ApplicationBuilder, CommandHandler, CallbackQueryHandler,
-    MessageHandler, filters
+    ApplicationBuilder,
+    CommandHandler,
+    CallbackQueryHandler,
+    MessageHandler,
+    filters,
 )
 from telegram.error import TimedOut
 from config.config_settings import config
 from core.session_manager import session_manager
 from handlers.command_handlers import CommandHandlers
 from handlers.callback_handlers import (
-    set_destino, buscar_epub, abrir_zeepubs, button_handler
+    set_destino,
+    buscar_epub,
+    abrir_zeepubs,
+    button_handler,
 )
 from handlers.message_handlers import recibir_texto
 from plugins.plugin_manager import PluginManager
 
 logger = logging.getLogger(__name__)
+
 
 async def error_handler(update, context):
     """Manejo global de errores para evitar caídas por timeouts u otros."""
@@ -25,6 +32,7 @@ async def error_handler(update, context):
         return
     logger.exception("Error en update %s: %s", update, err)
     return
+
 
 class ZeePubBot:
     """Clase principal del bot."""
@@ -50,11 +58,16 @@ class ZeePubBot:
         self.app.add_handler(CallbackQueryHandler(button_handler))
 
         # Mini App handlers
-        from handlers.webapp_handlers import register_handlers as register_webapp_handlers
+        from handlers.webapp_handlers import (
+            register_handlers as register_webapp_handlers,
+        )
+
         register_webapp_handlers(self.app)
 
         # Mensajes de texto
-        self.app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_texto))
+        self.app.add_handler(
+            MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_texto)
+        )
 
     def start(self):
         """Arranca el bot en polling (bloqueante, modo legacy)."""
@@ -76,10 +89,11 @@ class ZeePubBot:
         await self.app.start()
         await self.app.updater.start_polling()
         logger.info("Bot iniciado en modo asíncrono (API).")
-        
+
         # Iniciar scheduler de reportes semanales
         try:
             from services.weekly_reports import start_weekly_scheduler
+
             start_weekly_scheduler(self.app.bot)
             logger.info("Weekly report scheduler iniciado")
         except Exception as e:
@@ -88,6 +102,7 @@ class ZeePubBot:
         # Iniciar scheduler de backups diarios
         try:
             from services.backup_scheduler import start_backup_scheduler
+
             start_backup_scheduler(self.app.bot)
             logger.info("Daily backup scheduler iniciado")
         except Exception as e:
