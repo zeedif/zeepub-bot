@@ -3,6 +3,7 @@
 import logging
 import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from datetime import datetime
 from telegram.ext import ContextTypes, CommandHandler
 from core.state_manager import state_manager
 from utils.download_limiter import downloads_left, record_download, can_download
@@ -706,7 +707,6 @@ class CommandHandlers:
         
         try:
             import subprocess
-            import os
             from urllib.parse import urlparse
             
             # Descargar archivo
@@ -829,7 +829,6 @@ class CommandHandlers:
         
         try:
             import csv
-            from datetime import datetime
             
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"export_db_{timestamp}.csv"
