@@ -667,14 +667,13 @@ class CommandHandlers:
             # Si no están en env, intentar parsear DATABASE_URL
             if not pg_user and config.DATABASE_URL:
                 try:
-                    # postgresql+psycopg2://user:pass@host:port/db
-                    # Quitamos el driver para urlparse estándar
-                    clean_url = config.DATABASE_URL.replace("postgresql+psycopg2://", "postgres://")
-                    parsed = urlparse(clean_url)
-                    pg_user = parsed.username
-                    pg_password = parsed.password
-                    pg_host = parsed.hostname
-                    pg_db = parsed.path.lstrip('/')
+                    from sqlalchemy.engine import make_url
+                    url = make_url(config.DATABASE_URL)
+                    pg_user = url.username
+                    pg_password = url.password
+                    if url.host:
+                        pg_host = url.host
+                    pg_db = url.database
                 except Exception as e:
                     logger.error(f"Error parsing DATABASE_URL: {e}")
 
@@ -772,12 +771,13 @@ class CommandHandlers:
             
             if not pg_user and config.DATABASE_URL:
                 try:
-                    clean_url = config.DATABASE_URL.replace("postgresql+psycopg2://", "postgres://")
-                    parsed = urlparse(clean_url)
-                    pg_user = parsed.username
-                    pg_password = parsed.password
-                    pg_host = parsed.hostname
-                    pg_db = parsed.path.lstrip('/')
+                    from sqlalchemy.engine import make_url
+                    url = make_url(config.DATABASE_URL)
+                    pg_user = url.username
+                    pg_password = url.password
+                    if url.host:
+                        pg_host = url.host
+                    pg_db = url.database
                 except Exception:
                     pass
 
