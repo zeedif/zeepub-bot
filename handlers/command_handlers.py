@@ -515,9 +515,14 @@ class CommandHandlers:
             return
 
         # Resetear descargas
+        from utils.download_limiter import save_download
+        
         user_state = state_manager.get_user_state(target_uid)
         old_count = user_state.get("downloads_used", 0)
         user_state["downloads_used"] = 0
+        
+        # Actualizar persistencia
+        save_download(target_uid, 0)
 
         await update.message.reply_text(
             f"✅ Contador de descargas reseteado para el usuario {target_uid}.\n"

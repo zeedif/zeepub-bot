@@ -108,6 +108,20 @@ class ZeePubBot:
         except Exception as e:
             logger.error(f"Error iniciando daily backup scheduler: {e}", exc_info=True)
 
+        # Iniciar scheduler de reset diario de descargas
+        try:
+            from services.daily_reset_scheduler import start_daily_reset_scheduler
+            from utils.download_limiter import load_downloads
+
+            # Cargar descargas persistidas
+            load_downloads()
+            
+            # Iniciar scheduler
+            start_daily_reset_scheduler(self.app.bot)
+            logger.info("Daily reset scheduler iniciado")
+        except Exception as e:
+            logger.error(f"Error iniciando daily reset scheduler: {e}", exc_info=True)
+
     async def stop_async(self):
         """Detiene el bot de forma asíncrona."""
         await self.app.updater.stop()
