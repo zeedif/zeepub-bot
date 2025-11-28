@@ -85,6 +85,14 @@ class ZeePubBot:
         except Exception as e:
             logger.error(f"Error iniciando weekly scheduler: {e}", exc_info=True)
 
+        # Iniciar scheduler de backups diarios
+        try:
+            from services.backup_scheduler import start_backup_scheduler
+            start_backup_scheduler(self.app.bot)
+            logger.info("Daily backup scheduler iniciado")
+        except Exception as e:
+            logger.error(f"Error iniciando daily backup scheduler: {e}", exc_info=True)
+
     async def stop_async(self):
         """Detiene el bot de forma asíncrona."""
         await self.app.updater.stop()

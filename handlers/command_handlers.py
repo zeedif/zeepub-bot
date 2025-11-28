@@ -650,96 +650,25 @@ class CommandHandlers:
         )
         
         try:
-            import subprocess
-            import os
-            from datetime import datetime
-            from urllib.parse import urlparse
+            from services.backup_service import generate_backup_file
             
-            # Determinar si usar PostgreSQL o SQLite
-            if config.DATABASE_URL:
-                # --- Lógica PostgreSQL ---
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                filename = f"backup_zeepub_{timestamp}.sql"
-                
-                # Obtener credenciales
-                pg_user = os.getenv("POSTGRES_USER")
-                pg_password = os.getenv("POSTGRES_PASSWORD")
-                pg_db = os.getenv("POSTGRES_DB")
-                pg_host = "db" # Default docker service name
-                
-                # Si no están en env, intentar parsear DATABASE_URL
-                if not pg_user:
-                    try:
-                        from sqlalchemy.engine import make_url
-                        url = make_url(config.DATABASE_URL)
-                        pg_user = url.username
-                        pg_password = url.password
-                        if url.host:
-                            pg_host = url.host
-                        pg_db = url.database
-                    except Exception as e:
-                        logger.error(f"Error parsing DATABASE_URL: {e}")
-
-                if not pg_user or not pg_password:
-                    raise Exception("No se encontraron credenciales de base de datos.")
-
-                # Configurar entorno para pg_dump
-                env = os.environ.copy()
-                env["PGPASSWORD"] = pg_password
-                
-                # Comando pg_dump
-                cmd = [
-                    "pg_dump",
-                    "-h", pg_host,
-                    "-U", pg_user,
-                    "-d", pg_db,
-                    "-f", filename
-                ]
-                
-                # Use asyncio subprocess with timeout
-                import asyncio as _asyncio
-                proc = await _asyncio.create_subprocess_exec(*cmd, env=env, stdout=_asyncio.subprocess.PIPE, stderr=_asyncio.subprocess.PIPE)
-                try:
-                    stdout, stderr = await _asyncio.wait_for(proc.communicate(), timeout=120)
-                except _asyncio.TimeoutError:
-                    proc.kill()
-                    await proc.wait()
-                    raise Exception("pg_dump timed out")
-                if proc.returncode != 0:
-                    raise Exception(f"pg_dump failed: {stderr.decode(errors='ignore')}")
-                    
-                # Enviar archivo
-                with open(filename, "rb") as f:
-                    await context.bot.send_document(
-                        chat_id=update.effective_chat.id,
-                        document=f,
-                        filename=filename,
-                        caption=f"📦 Backup de base de datos (PostgreSQL)\n📅 {timestamp}",
-                        message_thread_id=thread_id
-                    )
-
-                # Limpiar
-                try:
-                    os.remove(filename)
-                except Exception:
-                    logger.debug("No se pudo eliminar backup temporal: %s", filename)
+            filename = await generate_backup_file()
             
-            else:
-                # --- Lógica SQLite ---
-                db_path = config.URL_CACHE_DB_PATH
-                if not os.path.exists(db_path):
-                    raise Exception(f"No se encontró la base de datos SQLite en: {db_path}")
-                
-                # Enviar el archivo directamente
-                sqlite_filename = f"backup_zeepub_sqlite_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
-                with open(db_path, "rb") as f:
-                    await context.bot.send_document(
-                        chat_id=update.effective_chat.id,
-                        document=f,
-                        filename=sqlite_filename,
-                        caption=f"📦 Backup de base de datos (SQLite)\n📅 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-                        message_thread_id=thread_id
-                    )
+            # Enviar archivo
+            with open(filename, "rb") as f:
+                await context.bot.send_document(
+                    chat_id=update.effective_chat.id,
+                    document=f,
+                    filename=filename,
+                    caption=f"📦 Backup de base de datos\n📅 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                    message_thread_id=thread_id
+                )
+
+            # Limpiar
+            try:
+                os.remove(filename)
+            except Exception:
+                logger.debug("No se pudo eliminar backup temporal: %s", filename)
 
             await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=msg.message_id)
             
