@@ -721,13 +721,13 @@ class CommandHandlers:
             )
 
     async def debug_state(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Debug command to show a snapshot of the user's state (publishers/admins only)."""
+        """Debug command to show a snapshot of the user's state (admins only)."""
         uid = update.effective_user.id
 
-        # Only allow publishers or admins
-        if uid not in config.FACEBOOK_PUBLISHERS and uid not in config.ADMIN_USERS:
+        # Only allow admins
+        if uid not in config.ADMIN_USERS:
             await update.message.reply_text(
-                "⛔ Solo publishers o administradores pueden usar /debug_state."
+                "⛔ Solo administradores pueden usar /debug_state."
             )
             return
 
@@ -779,9 +779,9 @@ class CommandHandlers:
         )
 
     async def backup_db(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Realiza un backup de la base de datos (solo publishers)."""
+        """Realiza un backup de la base de datos (solo admins)."""
         uid = update.effective_user.id
-        if uid not in config.FACEBOOK_PUBLISHERS:
+        if uid not in config.ADMIN_USERS:
             await update.message.reply_text(
                 "⛔ No tienes permisos para usar este comando."
             )
@@ -828,9 +828,9 @@ class CommandHandlers:
             )
 
     async def restore_db(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Restaura la base de datos desde un archivo (solo publishers)."""
+        """Restaura la base de datos desde un archivo (solo admins)."""
         uid = update.effective_user.id
-        if uid not in config.FACEBOOK_PUBLISHERS:
+        if uid not in config.ADMIN_USERS:
             await update.message.reply_text(
                 "⛔ No tienes permisos para usar este comando."
             )
