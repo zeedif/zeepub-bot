@@ -6,15 +6,20 @@ import time
 from config.config_settings import config
 
 
-def test_get_candidates_and_validator(tmp_path):
+def test_get_candidates_and_validator(tmp_path, monkeypatch):
     # Use a fresh DB
     db_file = tmp_path / "url_cache_validator.db"
     config.URL_CACHE_DB_PATH = str(db_file)
+    # Force SQLite mode by clearing DATABASE_URL
+    monkeypatch.setattr(config, 'DATABASE_URL', None)
 
     # Load module directly
     spec = importlib.util.spec_from_file_location("url_cache_mod", os.path.join(os.path.dirname(__file__), "..", "utils", "url_cache.py"))
     url_cache = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(url_cache)
+    
+    # Initialize the database
+    url_cache.init_db()
 
     # create entries
     h1 = url_cache.create_short_url("https://example.com/one.epub", book_title="one")

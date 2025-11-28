@@ -11,11 +11,16 @@ def test_create_and_get_short_url(tmp_path, monkeypatch):
     db_file = tmp_path / "url_cache_test.db"
     # Ensure config points to this DB
     config.URL_CACHE_DB_PATH = str(db_file)
+    # Force SQLite mode by clearing DATABASE_URL
+    monkeypatch.setattr(config, 'DATABASE_URL', None)
 
     # Load module directly from file to avoid importing the whole `utils` package
     from importlib.machinery import SourceFileLoader
     loader = SourceFileLoader("url_cache_test", os.path.join(os.path.dirname(__file__), "..", "utils", "url_cache.py"))
     url_cache = loader.load_module()
+    
+    # Initialize the database
+    url_cache.init_db()
 
     url = "https://example.com/some/book.epub"
     title = "Test Book"
