@@ -188,14 +188,17 @@ class CommandHandlers:
             ])
 
         # Construir mensaje
-        text = "🤖 *Ayuda de ZeePub Bot*\n\nAquí tienes lo que puedo hacer por ti:\n\n"
+        # Construir mensaje
+        text = "🤖 <b>Ayuda de ZeePub Bot</b>\n\nAquí tienes lo que puedo hacer por ti:\n\n"
         for cmd, desc in commands:
-            text += f"*{cmd}* - {desc}\n"
+            # Escape HTML special chars in description (e.g. <hash>, <id>)
+            safe_desc = desc.replace("<", "&lt;").replace(">", "&gt;")
+            text += f"<b>{cmd}</b> - {safe_desc}\n"
 
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text=text,
-            parse_mode="Markdown",
+            parse_mode="HTML",
             message_thread_id=thread_id,
         )
 
@@ -233,20 +236,23 @@ class CommandHandlers:
         hours, remainder = divmod(int(time_left.total_seconds()), 3600)
         minutes, _ = divmod(remainder, 60)
 
+        # Escape user name for HTML
+        user_name = update.effective_user.first_name.replace("<", "&lt;").replace(">", "&gt;")
+
         text = (
-            "📊 *Tu Estado*\n\n"
-            f"👤 *Usuario:* {update.effective_user.first_name}\n"
-            f"🆔 *ID:* {uid}\n"
-            f"⭐ *Nivel:* {user_level}\n"
-            f"📉 *Descargas:* {left_text}\n"
-            f"⏳ *Reinicio en:* {hours}h {minutes}m\n"
+            "📊 <b>Tu Estado</b>\n\n"
+            f"👤 <b>Usuario:</b> {user_name}\n"
+            f"🆔 <b>ID:</b> {uid}\n"
+            f"⭐ <b>Nivel:</b> {user_level}\n"
+            f"📉 <b>Descargas:</b> {left_text}\n"
+            f"⏳ <b>Reinicio en:</b> {hours}h {minutes}m\n"
         )
 
         thread_id = get_thread_id(update)
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text=text,
-            parse_mode="Markdown",
+            parse_mode="HTML",
             message_thread_id=thread_id,
         )
 
@@ -303,11 +309,13 @@ class CommandHandlers:
                 message_thread_id=thread_id,
             )
             return
-        text = "🔌 *Plugins activos:*\n\n"
+        text = "🔌 <b>Plugins activos:</b>\n\n"
         for name, info in plugins.items():
-            text += f"• *{name}* v{info['version']} — _{info['description']}_\n"
+            safe_name = name.replace("<", "&lt;").replace(">", "&gt;")
+            safe_desc = info['description'].replace("<", "&lt;").replace(">", "&gt;")
+            text += f"• <b>{safe_name}</b> v{info['version']} — <i>{safe_desc}</i>\n"
         await context.bot.send_message(
-            chat_id=update.effective_chat.id, text=text, parse_mode="Markdown"
+            chat_id=update.effective_chat.id, text=text, parse_mode="HTML"
         )
 
     async def evil(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
