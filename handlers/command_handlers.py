@@ -184,6 +184,7 @@ class CommandHandlers:
             commands.extend([
                 ("📦 /backup_db", "Generar backup de la base de datos"),
                 ("♻️ /restore_db", "Restaurar base de datos desde archivo"),
+                ("📚 /import_history", "Importar historial desde archivo JSON de Telegram"),
                 ("😈 /evil", "Entrar en modo Evil (Admin)"),
                 ("🔄 /reset", "Resetear descargas de usuario (uso: /reset <id>)"),
                 ("🐞 /debug_state", "Ver estado interno de usuario"),
@@ -1099,7 +1100,7 @@ class CommandHandlers:
 
         st = state_manager.get_user_state(uid)
         st["waiting_for_history_json"] = True
-        
+
         await update.message.reply_text(
             "📂 <b>Modo de Importación Activado</b>\n\n"
             "Por favor, envía ahora el archivo <code>result.json</code> exportado de Telegram Desktop.\n"

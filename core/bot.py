@@ -68,7 +68,7 @@ class ZeePubBot:
         self.app.add_handler(
             MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_texto)
         )
-        
+
         # JSON Upload Handler
         from handlers.message_handlers import handle_json_upload
         self.app.add_handler(

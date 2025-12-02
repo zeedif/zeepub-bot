@@ -135,7 +135,7 @@ async def handle_json_upload(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if not st.get("waiting_for_history_json"):
         # Ignorar silenciosamente si no se activó el comando
         return
-    
+
     # Limpiar estado
     st["waiting_for_history_json"] = False
 
@@ -154,7 +154,7 @@ async def handle_json_upload(update: Update, context: ContextTypes.DEFAULT_TYPE)
         # Reportar
         import os
         os.remove(file_path)
-        
+
         text = (
             f"✅ Importación completada.\n\n"
             f"Total mensajes escaneados: {stats['total']}\n"
@@ -166,4 +166,3 @@ async def handle_json_upload(update: Update, context: ContextTypes.DEFAULT_TYPE)
     except Exception as e:
         logger.error(f"Error processing JSON upload: {e}")
         await status_msg.edit_text(f"❌ Error al procesar el archivo: {e}")
-

@@ -19,6 +19,7 @@ try:
 except ImportError:
     pass
 
+
 def _get_engine():
     if not _HAS_SQLALCHEMY:
         raise RuntimeError("SQLAlchemy not installed")
@@ -27,6 +28,7 @@ def _get_engine():
         db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "url_cache.db")
         return create_engine(f"sqlite:///{db_path}", future=True)
     return create_engine(config.DATABASE_URL, future=True, pool_pre_ping=True)
+
 
 def _get_table(engine):
     metadata = MetaData()
@@ -46,6 +48,7 @@ def _get_table(engine):
         Column("date_published", DateTime, default=datetime.utcnow),
     )
 
+
 def log_published_book(
     meta: Dict[str, Any],
     message_id: int,
@@ -62,15 +65,15 @@ def log_published_book(
     try:
         engine = _get_engine()
         table = _get_table(engine)
-        
+
         slug = generar_slug_from_meta(meta)
-        
+
         # Extract fields from meta
         title = meta.get("titulo_volumen") or meta.get("titulo")
         author = meta.get("autor") or (meta.get("autores")[0] if meta.get("autores") else None)
         series = meta.get("titulo_serie")
-        volume = meta.get("volume_index") # Might need adjustment based on meta structure
-        
+        volume = meta.get("volume_index")  # Might need adjustment based on meta structure
+
         # Extract fields from file_info
         file_size = file_info.get("file_size") if file_info else None
         file_unique_id = file_info.get("file_unique_id") if file_info else None
@@ -94,13 +97,14 @@ def log_published_book(
     except Exception as e:
         logger.error(f"Error logging published book: {e}")
 
+
 def process_history_json(file_path: str) -> Dict[str, int]:
     """
     Parses a Telegram export JSON file and imports books into the database.
     Returns stats: {'total': 0, 'imported': 0, 'errors': 0}
     """
     stats = {'total': 0, 'imported': 0, 'errors': 0}
-    
+
     if not os.path.exists(file_path):
         logger.error(f"File not found: {file_path}")
         return stats
@@ -113,12 +117,12 @@ def process_history_json(file_path: str) -> Dict[str, int]:
         return stats
 
     messages = data.get('messages', [])
-    channel_id = data.get('id', 0) # Export might have channel ID
-    
+    channel_id = data.get('id', 0)  # Export might have channel ID
+
     # If channel_id is string "channel123", extract number
     if isinstance(channel_id, str) and not channel_id.isdigit():
-         # Try to find numeric part? Or just use 0 if not clear.
-         pass
+        # Try to find numeric part? Or just use 0 if not clear.
+        pass
 
     engine = _get_engine()
     table = _get_table(engine)
@@ -127,16 +131,16 @@ def process_history_json(file_path: str) -> Dict[str, int]:
         for msg in messages:
             if msg.get('type') != 'message':
                 continue
-            
+
             # Check if it has a file (epub)
-            file_info = msg.get('file') # Telegram export format varies
+            file_info = msg.get('file')  # Telegram export format varies
             # Usually 'file' key exists if it's a document
             # Or check 'media_type'
-            
+
             # We are looking for messages with #slugs
             text_entities = msg.get('text_entities', [])
             text_content = ""
-            
+
             # Reconstruct text and look for hashtags
             slug = None
             for entity in text_entities:
@@ -146,7 +150,7 @@ def process_history_json(file_path: str) -> Dict[str, int]:
                         slug = text[1:]
                 if entity.get('type') == 'plain':
                     text_content += entity.get('text', '')
-            
+
             # If plain text is a list in 'text' field (older exports?)
             if isinstance(msg.get('text'), list):
                 # Join parts
@@ -171,15 +175,15 @@ def process_history_json(file_path: str) -> Dict[str, int]:
 
             # It seems to be a book post
             stats['total'] += 1
-            
+
             # Extract other metadata from text (heuristic)
             # "Epub de: Series ║ Collection ║ Title"
             # "📂 Title"
-            
+
             title = "Unknown"
             author = None
             series = None
-            
+
             # Try to parse title line
             lines = text_content.split('\n')
             for line in lines:
@@ -190,26 +194,26 @@ def process_history_json(file_path: str) -> Dict[str, int]:
                     if len(parts) >= 3:
                         title = parts[2].strip()
                     elif len(parts) == 1:
-                        title = parts[0].strip() # Fallback
+                        title = parts[0].strip()  # Fallback
                 elif line.strip().startswith("📂"):
                     # 📂 Title
                     title = line.replace("📂", "").strip()
                 elif line.strip().startswith("Autor:"):
                     author = line.replace("Autor:", "").strip()
-                elif "Autor:" in line: # bold html might be gone
-                     pass
+                elif "Autor:" in line:  # bold html might be gone
+                    pass
 
             # File info from export
             # Export usually has 'file' path relative to export, not file_unique_id
             # We might not have file_unique_id from export
-            
+
             msg_id = msg.get('id')
             date_str = msg.get('date')
             date_published = datetime.utcnow()
             if date_str:
                 try:
                     date_published = datetime.strptime(date_str, '%Y-%m-%dT%H:%M:%S')
-                except:
+                except Exception:
                     pass
 
             try:
@@ -221,11 +225,11 @@ def process_history_json(file_path: str) -> Dict[str, int]:
                     )
                 )
                 existing = conn.execute(sel).first()
-                
+
                 if not existing:
                     ins = table.insert().values(
                         message_id=msg_id,
-                        channel_id=channel_id, # Might be inaccurate from export
+                        channel_id=channel_id,  # Might be inaccurate from export
                         title=title,
                         author=author,
                         series=series,

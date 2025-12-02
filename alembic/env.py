@@ -70,7 +70,7 @@ def run_migrations_online():
     """
     # Get DATABASE_URL from environment (already set in lines 16-18)
     db_url = config.get_main_option("sqlalchemy.url")
-    
+
     from sqlalchemy import create_engine
     connectable = create_engine(db_url, poolclass=pool.NullPool)
 
