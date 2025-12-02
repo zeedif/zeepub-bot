@@ -113,3 +113,57 @@ async def recibir_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
             chat_id=update.effective_chat.id,
             text="Usa /start para comenzar o selecciona una opción del menú.",
         )
+
+
+async def handle_json_upload(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Maneja la subida del archivo result.json para importar historial."""
+    document = update.message.document
+    if not document:
+        return
+
+    # Verificar nombre de archivo
+    if not (document.file_name == "result.json" or document.mime_type == "application/json"):
+        return
+
+    # Verificar admin (opcional, pero recomendado)
+    uid = update.effective_user.id
+    if uid not in config.ADMIN_USERS:
+        return
+
+    # Verificar estado activo
+    st = state_manager.get_user_state(uid)
+    if not st.get("waiting_for_history_json"):
+        # Ignorar silenciosamente si no se activó el comando
+        return
+    
+    # Limpiar estado
+    st["waiting_for_history_json"] = False
+
+    status_msg = await update.message.reply_text("⏳ Procesando archivo de historial...")
+
+    try:
+        # Descargar archivo
+        new_file = await document.get_file()
+        file_path = f"/tmp/{document.file_unique_id}.json"
+        await new_file.download_to_drive(file_path)
+
+        # Procesar
+        from services.history_service import process_history_json
+        stats = process_history_json(file_path)
+
+        # Reportar
+        import os
+        os.remove(file_path)
+        
+        text = (
+            f"✅ Importación completada.\n\n"
+            f"Total mensajes escaneados: {stats['total']}\n"
+            f"Libros importados: {stats['imported']}\n"
+            f"Errores: {stats['errors']}"
+        )
+        await status_msg.edit_text(text)
+
+    except Exception as e:
+        logger.error(f"Error processing JSON upload: {e}")
+        await status_msg.edit_text(f"❌ Error al procesar el archivo: {e}")
+

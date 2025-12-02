@@ -41,6 +41,8 @@ class CommandHandlers:
         app.add_handler(CommandHandler("restore_db", self.restore_db))
         # Registrar /export_db (publishers only)
         app.add_handler(CommandHandler("export_db", self.export_db))
+        # Registrar /import_history (admin only)
+        app.add_handler(CommandHandler("import_history", self.import_history))
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /start: inicializa estado; admin->evil, otros->normal."""
@@ -1087,3 +1089,21 @@ class CommandHandlers:
                 message_id=msg.message_id,
                 text=f"❌ Error al generar CSV: {str(e)}",
             )
+
+    async def import_history(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Activa el modo de importación de historial (solo admins)."""
+        uid = update.effective_user.id
+        if uid not in config.ADMIN_USERS:
+            await update.message.reply_text("⛔ No tienes permisos para usar este comando.")
+            return
+
+        st = state_manager.get_user_state(uid)
+        st["waiting_for_history_json"] = True
+        
+        await update.message.reply_text(
+            "📂 <b>Modo de Importación Activado</b>\n\n"
+            "Por favor, envía ahora el archivo <code>result.json</code> exportado de Telegram Desktop.\n"
+            "El bot procesará el archivo y guardará el historial de libros publicados.\n\n"
+            "<i>Este modo se desactivará automáticamente después de recibir el archivo.</i>",
+            parse_mode="HTML"
+        )
