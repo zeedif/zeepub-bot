@@ -147,9 +147,12 @@ async def handle_json_upload(update: Update, context: ContextTypes.DEFAULT_TYPE)
         file_path = f"/tmp/{document.file_unique_id}.json"
         await new_file.download_to_drive(file_path)
 
-        # Procesar
+        # Procesar en un thread aparte para no bloquear
+        import asyncio
         from services.history_service import process_history_json
-        stats = process_history_json(file_path)
+        
+        loop = asyncio.get_running_loop()
+        stats = await loop.run_in_executor(None, process_history_json, file_path)
 
         # Reportar
         import os

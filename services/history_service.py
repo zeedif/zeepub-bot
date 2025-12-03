@@ -32,7 +32,7 @@ def _get_engine():
 
 def _get_table(engine):
     metadata = MetaData()
-    return Table(
+    table = Table(
         "published_books",
         metadata,
         Column("id", Integer, primary_key=True, autoincrement=True),
@@ -46,7 +46,15 @@ def _get_table(engine):
         Column("file_size", Integer, nullable=True),
         Column("file_unique_id", Text, nullable=True),
         Column("date_published", DateTime, default=datetime.utcnow),
+        Column("maquetado_por", Text, nullable=True),
+        Column("demografia", Text, nullable=True),
+        Column("generos", Text, nullable=True),
+        Column("ilustrador", Text, nullable=True),
+        Column("traduccion", Text, nullable=True),
     )
+    # Ensure table exists
+    metadata.create_all(engine)
+    return table
 
 
 def log_published_book(
@@ -103,6 +111,7 @@ def process_history_json(file_path: str) -> Dict[str, int]:
     Parses a Telegram export JSON file and imports books into the database.
     Returns stats: {'total': 0, 'imported': 0, 'errors': 0}
     """
+    import re  # Import at top of function
     stats = {'total': 0, 'imported': 0, 'errors': 0}
 
     if not os.path.exists(file_path):
@@ -125,9 +134,29 @@ def process_history_json(file_path: str) -> Dict[str, int]:
         pass
 
     engine = _get_engine()
-    table = _get_table(engine)
+    
+    # Debug: Check tables
+    from sqlalchemy import inspect
+    try:
+        insp = inspect(engine)
+        logger.info(f"Existing tables before creation: {insp.get_table_names()}")
+    except Exception as e:
+        logger.error(f"Error inspecting tables: {e}")
 
-    with engine.begin() as conn:
+    table = _get_table(engine)
+    
+    try:
+        insp = inspect(engine)
+        logger.info(f"Existing tables after creation: {insp.get_table_names()}")
+    except Exception as e:
+        logger.error(f"Error inspecting tables: {e}")
+
+    logger.info(f"Processing {len(messages)} messages from export")
+    # Log first message structure for debugging
+    if messages:
+        logger.debug(f"First message sample: {messages[0]}")
+
+    with engine.connect() as conn:
         for msg in messages:
             if msg.get('type') != 'message':
                 continue
@@ -171,10 +200,12 @@ def process_history_json(file_path: str) -> Dict[str, int]:
                         slug = match.group(1)
 
             if not slug:
+                # logger.debug(f"No slug found in message {msg.get('id')}, skipping")
                 continue
 
             # It seems to be a book post
             stats['total'] += 1
+            logger.info(f"Processing book with slug: {slug}")
 
             # Extract other metadata from text (heuristic)
             # "Epub de: Series ║ Collection ║ Title"
@@ -183,6 +214,16 @@ def process_history_json(file_path: str) -> Dict[str, int]:
             title = "Unknown"
             author = None
             series = None
+            maquetado_por = None
+            demografia = None
+            generos = None
+            ilustrador = None
+            traduccion = None
+
+            # Skip synopsis messages explicitly
+            if text_content.strip().startswith("Sinopsis") or "Sinopsis:" in text_content[:20]:
+                logger.debug(f"Skipping synopsis message {msg_id}")
+                continue
 
             # Try to parse title line
             lines = text_content.split('\n')
@@ -195,17 +236,43 @@ def process_history_json(file_path: str) -> Dict[str, int]:
                         title = parts[2].strip()
                     elif len(parts) == 1:
                         title = parts[0].strip()  # Fallback
+                elif "║" in line: # Handle lines like "Series ║ Title" without "Epub de:"
+                    parts = line.split('║')
+                    if len(parts) >= 1:
+                        series = parts[0].strip()
+                    if len(parts) >= 2:
+                        title = parts[1].strip()
                 elif line.strip().startswith("📂"):
                     # 📂 Title
                     title = line.replace("📂", "").strip()
-                elif line.strip().startswith("Autor:"):
-                    author = line.replace("Autor:", "").strip()
-                elif "Autor:" in line:  # bold html might be gone
-                    pass
+                elif line.strip().startswith("Autor:") or "Autor:" in line:
+                    author = line.split("Autor:")[-1].strip()
+                elif "Maquetado por:" in line:
+                    # Extract hashtags after "Maquetado por:"
+                    parts = line.split("Maquetado por:")[-1]
+                    # Find hashtags in the rest of the line
+                    hashtags = re.findall(r'#(\w+)', parts)
+                    if hashtags:
+                        maquetado_por = ", ".join(hashtags)
+                elif "Demografía:" in line:
+                    demografia = line.split("Demografía:")[-1].strip()
+                elif "Géneros:" in line:
+                    generos = line.split("Géneros:")[-1].strip()
+                elif "Ilustrador:" in line:
+                    ilustrador = line.split("Ilustrador:")[-1].strip()
+                elif "Traducción:" in line:
+                    traduccion = line.split("Traducción:")[-1].strip()
 
             # File info from export
             # Export usually has 'file' path relative to export, not file_unique_id
             # We might not have file_unique_id from export
+            file_size = None
+            file_unique_id = None
+            volume = None
+            
+            if isinstance(file_info, dict):
+                 # Try to get size if available (unlikely in standard export but possible)
+                 pass
 
             msg_id = msg.get('id')
             date_str = msg.get('date')
@@ -216,30 +283,101 @@ def process_history_json(file_path: str) -> Dict[str, int]:
                 except Exception:
                     pass
 
-            try:
-                # Check if already exists
-                sel = sa.select(table.c.id).where(
-                    sa.and_(
-                        table.c.message_id == msg_id,
-                        table.c.slug == slug
-                    )
-                )
-                existing = conn.execute(sel).first()
+            if not author:
+                # If no author found, but we have a slug and it's not a synopsis, 
+                # assume it's a book and use "Desconocido"
+                author = "Desconocido"
+                logger.info(f"Message {msg_id} (slug: {slug}) has no author, defaulting to 'Desconocido'")
 
-                if not existing:
-                    ins = table.insert().values(
-                        message_id=msg_id,
-                        channel_id=channel_id,  # Might be inaccurate from export
-                        title=title,
-                        author=author,
-                        series=series,
-                        slug=slug,
-                        date_published=date_published
+            try:
+                # Use a transaction for each item so failures don't break the loop
+                with conn.begin():
+                    # Check if already exists
+                    sel = sa.select(table.c.id).where(
+                        sa.and_(
+                            table.c.message_id == msg_id,
+                            table.c.slug == slug
+                        )
                     )
-                    conn.execute(ins)
-                    stats['imported'] += 1
+                    existing = conn.execute(sel).first()
+
+                    if not existing:
+                        ins = table.insert().values(
+                            message_id=msg_id,
+                            channel_id=channel_id,  # Might be inaccurate from export
+                            title=title,
+                            author=author,
+                            series=series,
+                            volume=str(volume) if volume else None,
+                            slug=slug,
+                            file_size=file_size,
+                            file_unique_id=file_unique_id,
+                            date_published=date_published,
+                            maquetado_por=maquetado_por,
+                            demografia=demografia,
+                            generos=generos,
+                            ilustrador=ilustrador,
+                            traduccion=traduccion
+                        )
+                        conn.execute(ins)
+                        stats['imported'] += 1
+                        logger.debug(f"Successfully imported book: {slug}")
             except Exception as e:
-                logger.error(f"Error importing msg {msg_id}: {e}")
+                logger.error(f"Error importing msg {msg_id} (slug: {slug}): {e}", exc_info=True)
                 stats['errors'] += 1
 
+    logger.info(f"Import complete: {stats['imported']}/{stats['total']} books imported, {stats['errors']} errors")
     return stats
+
+def get_latest_books(limit: int = 10) -> list:
+    """
+    Retrieves the last N published books from the database.
+    """
+    if not _HAS_SQLALCHEMY:
+        return []
+
+    try:
+        engine = _get_engine()
+        table = _get_table(engine)
+        
+        with engine.connect() as conn:
+            sel = sa.select(
+                table.c.title,
+                table.c.author,
+                table.c.series,
+                table.c.slug,
+                table.c.date_published,
+                table.c.file_size,
+                table.c.maquetado_por,
+                table.c.demografia,
+                table.c.generos,
+                table.c.ilustrador,
+                table.c.traduccion
+            ).order_by(table.c.date_published.desc()).limit(limit)
+            
+            result = conn.execute(sel).fetchall()
+            return result
+    except Exception as e:
+        logger.error(f"Error getting latest books: {e}")
+        return []
+
+def clear_history():
+    """
+    Deletes all records from the published_books table.
+    """
+    if not _HAS_SQLALCHEMY:
+        return False
+
+    try:
+        engine = _get_engine()
+        # table = _get_table(engine) # Not strictly needed if we use text SQL
+        
+        with engine.begin() as conn:
+            from sqlalchemy import text
+            conn.execute(text("DELETE FROM published_books"))
+            print("DEBUG: clear_history executed DELETE FROM published_books")
+            return True
+    except Exception as e:
+        logger.error(f"Error clearing history: {e}")
+        print(f"DEBUG: Error clearing history: {e}")
+        return False
