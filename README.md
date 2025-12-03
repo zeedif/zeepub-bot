@@ -43,9 +43,12 @@
 - **Comandos de Administración** (Solo Admins):
   - `/backup_db`: Genera y envía un backup completo de la base de datos PostgreSQL.
   - `/restore_db`: Restaura la base de datos desde un archivo .sql.
-  - `/evil`: Acceso al modo Evil con bibliotecas restringidas.
   - `/reset <user_id>`: Resetea el contador de descargas de un usuario.
   - `/debug_state`: Muestra el estado actual del usuario (para debugging).
+  - `/latest_books [chat_id]`: Ver últimos libros publicados (con filtro opcional por chat).
+  - `/import_history`: Importar historial desde JSON de Telegram.
+  - `/export_history`: Exportar historial a CSV.
+  - `/clear_history confirm`: Borrar todo el historial de publicaciones.
 - **Reportes Automáticos**:
   - Sistema de reportes semanales automáticos cada lunes a las 9:00 AM con estadísticas de links (total, válidos, rotos, tasa de éxito).
   - Los reportes se envían automáticamente a todos los publishers configurados.
@@ -58,6 +61,14 @@
   - Preparación automatizada de posts con formato completo (título, metadata, sinopsis, info del archivo).
   - Publicación directa en grupos de Facebook con un solo clic.
   - Vista previa correcta del título (sin slug) para Facebook.
+- **Sistema de Historial de Libros** (Solo Admins):
+  - Registro automático de todos los libros publicados (desde bot y Mini App).
+  - Almacenamiento de metadatos completos: maquetadores, demografía, géneros, ilustrador, traducción.
+  - `/latest_books`: Ver últimos 10 libros publicados (todos los chats).
+  - `/latest_books <chat_id>`: Filtrar libros por chat específico.
+  - `/import_history`: Importar historial desde exportación JSON de Telegram.
+  - `/export_history`: Exportar historial completo a CSV.
+  - `/clear_history confirm`: Borrar todo el historial.
 
 ***
 
@@ -83,6 +94,7 @@
 │   ├── telegram_service.py    # Lógica de envío de EPUBs y FB posts
 │   ├── epub_service.py        # Extracción de metadatos y títulos internos
 │   ├── opds_service.py        # Navegación de catálogos OPDS
+│   ├── history_service.py     # Registro y gestión de historial de libros
 │   ├── weekly_reports.py      # Sistema de reportes automáticos semanales
 │   ├── backup_scheduler.py    # Scheduler de backups diarios
 │   └── daily_reset_scheduler.py # Scheduler de reset de descargas a medianoche
