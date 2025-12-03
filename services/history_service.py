@@ -82,6 +82,35 @@ def log_published_book(
         series = meta.get("titulo_serie")
         volume = meta.get("volume_index")  # Might need adjustment based on meta structure
 
+        # Extract extended metadata fields
+        # Maquetado por: convert list to comma-separated string
+        maquetadores = meta.get("maquetadores", [])
+        maquetado_por = ", ".join(maquetadores) if isinstance(maquetadores, list) else maquetadores
+
+        # Demografia: convert list to comma-separated string or take first element
+        demografia_list = meta.get("demografia", [])
+        if isinstance(demografia_list, list) and demografia_list:
+            demografia = ", ".join(demografia_list)
+        elif isinstance(demografia_list, str):
+            demografia = demografia_list
+        else:
+            demografia = None
+
+        # Generos: convert list to comma-separated string
+        generos_list = meta.get("generos", [])
+        if isinstance(generos_list, list) and generos_list:
+            generos = ", ".join(generos_list)
+        elif isinstance(generos_list, str):
+            generos = generos_list
+        else:
+            generos = None
+
+        # Ilustrador
+        ilustrador = meta.get("ilustrador")
+
+        # Traduccion: from 'traductor' field in metadata
+        traduccion = meta.get("traductor")
+
         # Extract fields from file_info
         file_size = file_info.get("file_size") if file_info else None
         file_unique_id = file_info.get("file_unique_id") if file_info else None
@@ -97,7 +126,12 @@ def log_published_book(
                 slug=slug,
                 file_size=file_size,
                 file_unique_id=file_unique_id,
-                date_published=datetime.utcnow()
+                date_published=datetime.utcnow(),
+                maquetado_por=maquetado_por,
+                demografia=demografia,
+                generos=generos,
+                ilustrador=ilustrador,
+                traduccion=traduccion
             )
             conn.execute(ins)
             logger.info(f"Logged published book: {slug} (Msg ID: {message_id})")
@@ -329,9 +363,16 @@ def process_history_json(file_path: str) -> Dict[str, int]:
     logger.info(f"Import complete: {stats['imported']}/{stats['total']} books imported, {stats['errors']} errors")
     return stats
 
-def get_latest_books(limit: int = 10) -> list:
+def get_latest_books(limit: int = 10, channel_id: Optional[int] = None) -> list:
     """
     Retrieves the last N published books from the database.
+    
+    Args:
+        limit: Maximum number of books to return
+        channel_id: Optional channel/chat ID to filter by
+    
+    Returns:
+        List of book records
     """
     if not _HAS_SQLALCHEMY:
         return []
@@ -352,8 +393,15 @@ def get_latest_books(limit: int = 10) -> list:
                 table.c.demografia,
                 table.c.generos,
                 table.c.ilustrador,
-                table.c.traduccion
-            ).order_by(table.c.date_published.desc()).limit(limit)
+                table.c.traduccion,
+                table.c.channel_id
+            ).order_by(table.c.date_published.desc())
+            
+            # Apply channel filter if provided
+            if channel_id is not None:
+                sel = sel.where(table.c.channel_id == channel_id)
+            
+            sel = sel.limit(limit)
             
             result = conn.execute(sel).fetchall()
             return result

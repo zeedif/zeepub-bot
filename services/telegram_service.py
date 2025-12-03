@@ -915,9 +915,26 @@ async def enviar_libro_directo(
                 unquote(urlparse(download_url).path.split("/")[-1]) or "archivo.epub"
             )
 
-            await send_doc_bytes(
+            sent_doc = await send_doc_bytes(
                 bot, destino, caption, epub_bytes, filename=fname, parse_mode="HTML"
             )
+
+            # Registrar en historial
+            if sent_doc:
+                from services.history_service import log_published_book
+                file_info = {
+                    "file_size": sent_doc.document.file_size,
+                    "file_unique_id": sent_doc.document.file_unique_id
+                }
+                try:
+                    log_published_book(
+                        meta=meta,
+                        message_id=sent_doc.message_id,
+                        channel_id=sent_doc.chat.id,
+                        file_info=file_info
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to log book history in enviar_libro_directo: {e}")
 
             # 8. Registrar descarga y notificar
             record_download(user_id)

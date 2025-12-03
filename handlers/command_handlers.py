@@ -188,10 +188,12 @@ class CommandHandlers:
                 ("📦 /backup_db", "Generar backup de la base de datos"),
                 ("♻️ /restore_db", "Restaurar base de datos desde archivo"),
                 ("📚 /import_history", "Importar historial desde archivo JSON de Telegram"),
-                ("🆕 /latest_books", "Ver últimos 10 libros importados/publicados"),
+                ("🆕 /latest_books", "Ver últimos libros publicados\n"
+                 "   • Sin argumentos: todos los libros con su chat_id\n"
+                 "   • Con chat_id: solo libros de ese chat\n"
+                 "   Ejemplo: /latest_books -1001234567890"),
                 ("📤 /export_history", "Exportar historial a CSV"),
                 ("🗑️ /clear_history", "Borrar todo el historial (Admin)"),
-                ("😈 /evil", "Entrar en modo Evil (Admin)"),
                 ("🔄 /reset", "Resetear descargas de usuario (uso: /reset <id>)"),
                 ("🐞 /debug_state", "Ver estado interno de usuario"),
             ])
@@ -1116,22 +1118,54 @@ class CommandHandlers:
         )
 
     async def latest_books(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Muestra los últimos 10 libros importados/publicados."""
+        """Muestra los últimos 10 libros importados/publicados (solo admins).
+        
+        Uso:
+            /latest_books              -> Muestra todos los últimos 10 libros
+            /latest_books <chat_id>    -> Filtra por chat_id específico
+        """
         uid = update.effective_user.id
-        # Optional: restrict to admins or publishers if needed, but user didn't specify
-        # if uid not in config.ADMIN_USERS: ...
+        
+        # Restricción: solo admins
+        if uid not in config.ADMIN_USERS:
+            await update.message.reply_text("⛔ No tienes permisos para usar este comando.")
+            return
 
         try:
             from services.history_service import get_latest_books
-            books = get_latest_books(limit=10)
+            
+            # Parse argumentos: chat_id opcional
+            channel_filter = None
+            if context.args and len(context.args) > 0:
+                try:
+                    channel_filter = int(context.args[0])
+                except ValueError:
+                    await update.message.reply_text(
+                        "❌ Chat ID inválido. Uso: /latest_books [chat_id]\n"
+                        "Ejemplo: /latest_books -1001234567890"
+                    )
+                    return
+            
+            # Obtener libros con o sin filtro
+            books = get_latest_books(limit=10, channel_id=channel_filter)
 
             if not books:
-                await update.message.reply_text("📚 No hay libros registrados en el historial.")
+                if channel_filter:
+                    await update.message.reply_text(
+                        f"📚 No hay libros registrados en el chat {channel_filter}."
+                    )
+                else:
+                    await update.message.reply_text("📚 No hay libros registrados en el historial.")
                 return
 
-            text = "📚 <b>Últimos 10 Libros Publicados</b>\n\n"
+            # Título del mensaje según modo
+            if channel_filter:
+                text = f"📚 <b>Últimos 10 Libros en Chat {channel_filter}</b>\n\n"
+            else:
+                text = "📚 <b>Últimos 10 Libros Publicados</b>\n\n"
+            
             for b in books:
-                # b is a Row object (title, author, series, slug, date)
+                # b is a Row object (title, author, series, slug, date, ..., channel_id)
                 title = b.title or "Sin título"
                 author = b.author or "Desconocido"
                 series = f" ({b.series})" if b.series else ""
@@ -1139,7 +1173,13 @@ class CommandHandlers:
                 
                 text += f"🔹 <b>{title}</b>{series}\n"
                 text += f"   ✍️ {author}\n"
-                text += f"   📅 {date_str} | #️⃣ {b.slug}\n\n"
+                text += f"   📅 {date_str} | #️⃣ {b.slug}\n"
+                
+                # Mostrar chat_id si NO estamos filtrando (modo sin argumentos)
+                if not channel_filter and hasattr(b, 'channel_id') and b.channel_id:
+                    text += f"   📍 Chat: {b.channel_id}\n"
+                
+                text += "\n"
 
             await update.message.reply_text(text, parse_mode="HTML")
 
