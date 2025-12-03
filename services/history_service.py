@@ -168,7 +168,7 @@ def process_history_json(file_path: str) -> Dict[str, int]:
         pass
 
     engine = _get_engine()
-    
+
     # Debug: Check tables
     from sqlalchemy import inspect
     try:
@@ -178,7 +178,7 @@ def process_history_json(file_path: str) -> Dict[str, int]:
         logger.error(f"Error inspecting tables: {e}")
 
     table = _get_table(engine)
-    
+
     try:
         insp = inspect(engine)
         logger.info(f"Existing tables after creation: {insp.get_table_names()}")
@@ -254,6 +254,9 @@ def process_history_json(file_path: str) -> Dict[str, int]:
             ilustrador = None
             traduccion = None
 
+            # Get message ID first
+            msg_id = msg.get('id')
+
             # Skip synopsis messages explicitly
             if text_content.strip().startswith("Sinopsis") or "Sinopsis:" in text_content[:20]:
                 logger.debug(f"Skipping synopsis message {msg_id}")
@@ -270,7 +273,7 @@ def process_history_json(file_path: str) -> Dict[str, int]:
                         title = parts[2].strip()
                     elif len(parts) == 1:
                         title = parts[0].strip()  # Fallback
-                elif "║" in line: # Handle lines like "Series ║ Title" without "Epub de:"
+                elif "║" in line:  # Handle lines like "Series ║ Title" without "Epub de:"
                     parts = line.split('║')
                     if len(parts) >= 1:
                         series = parts[0].strip()
@@ -303,12 +306,10 @@ def process_history_json(file_path: str) -> Dict[str, int]:
             file_size = None
             file_unique_id = None
             volume = None
-            
-            if isinstance(file_info, dict):
-                 # Try to get size if available (unlikely in standard export but possible)
-                 pass
 
-            msg_id = msg.get('id')
+            if isinstance(file_info, dict):
+                # Try to get size if available (unlikely in standard export but possible)
+                pass
             date_str = msg.get('date')
             date_published = datetime.utcnow()
             if date_str:
@@ -358,19 +359,20 @@ def process_history_json(file_path: str) -> Dict[str, int]:
                         logger.debug(f"Successfully imported book: {slug}")
             except Exception as e:
                 logger.error(f"Error importing msg {msg_id} (slug: {slug}): {e}", exc_info=True)
-                stats['errors'] += 1
+        stats['errors'] += 1
 
     logger.info(f"Import complete: {stats['imported']}/{stats['total']} books imported, {stats['errors']} errors")
     return stats
 
+
 def get_latest_books(limit: int = 10, channel_id: Optional[int] = None) -> list:
     """
     Retrieves the last N published books from the database.
-    
+
     Args:
         limit: Maximum number of books to return
         channel_id: Optional channel/chat ID to filter by
-    
+
     Returns:
         List of book records
     """
@@ -380,7 +382,7 @@ def get_latest_books(limit: int = 10, channel_id: Optional[int] = None) -> list:
     try:
         engine = _get_engine()
         table = _get_table(engine)
-        
+
         with engine.connect() as conn:
             sel = sa.select(
                 table.c.title,
@@ -396,18 +398,19 @@ def get_latest_books(limit: int = 10, channel_id: Optional[int] = None) -> list:
                 table.c.traduccion,
                 table.c.channel_id
             ).order_by(table.c.date_published.desc())
-            
+
             # Apply channel filter if provided
             if channel_id is not None:
                 sel = sel.where(table.c.channel_id == channel_id)
-            
+
             sel = sel.limit(limit)
-            
+
             result = conn.execute(sel).fetchall()
             return result
     except Exception as e:
         logger.error(f"Error getting latest books: {e}")
         return []
+
 
 def clear_history():
     """
@@ -419,7 +422,7 @@ def clear_history():
     try:
         engine = _get_engine()
         # table = _get_table(engine) # Not strictly needed if we use text SQL
-        
+
         with engine.begin() as conn:
             from sqlalchemy import text
             conn.execute(text("DELETE FROM published_books"))

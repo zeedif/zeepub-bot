@@ -1119,13 +1119,13 @@ class CommandHandlers:
 
     async def latest_books(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Muestra los últimos 10 libros importados/publicados (solo admins).
-        
+
         Uso:
             /latest_books              -> Muestra todos los últimos 10 libros
             /latest_books <chat_id>    -> Filtra por chat_id específico
         """
         uid = update.effective_user.id
-        
+
         # Restricción: solo admins
         if uid not in config.ADMIN_USERS:
             await update.message.reply_text("⛔ No tienes permisos para usar este comando.")
@@ -1133,7 +1133,7 @@ class CommandHandlers:
 
         try:
             from services.history_service import get_latest_books
-            
+
             # Parse argumentos: chat_id opcional
             channel_filter = None
             if context.args and len(context.args) > 0:
@@ -1145,7 +1145,7 @@ class CommandHandlers:
                         "Ejemplo: /latest_books -1001234567890"
                     )
                     return
-            
+
             # Obtener libros con o sin filtro
             books = get_latest_books(limit=10, channel_id=channel_filter)
 
@@ -1163,22 +1163,22 @@ class CommandHandlers:
                 text = f"📚 <b>Últimos 10 Libros en Chat {channel_filter}</b>\n\n"
             else:
                 text = "📚 <b>Últimos 10 Libros Publicados</b>\n\n"
-            
+
             for b in books:
                 # b is a Row object (title, author, series, slug, date, ..., channel_id)
                 title = b.title or "Sin título"
                 author = b.author or "Desconocido"
                 series = f" ({b.series})" if b.series else ""
                 date_str = b.date_published.strftime("%Y-%m-%d %H:%M") if b.date_published else "?"
-                
+
                 text += f"🔹 <b>{title}</b>{series}\n"
                 text += f"   ✍️ {author}\n"
                 text += f"   📅 {date_str} | #️⃣ {b.slug}\n"
-                
+
                 # Mostrar chat_id si NO estamos filtrando (modo sin argumentos)
                 if not channel_filter and hasattr(b, 'channel_id') and b.channel_id:
                     text += f"   📍 Chat: {b.channel_id}\n"
-                
+
                 text += "\n"
 
             await update.message.reply_text(text, parse_mode="HTML")
@@ -1235,7 +1235,7 @@ class CommandHandlers:
             import io
             output = io.StringIO()
             writer = csv.writer(output)
-            
+
             # Header
             writer.writerow([
                 'Título', 
@@ -1250,7 +1250,7 @@ class CommandHandlers:
                 'Fecha Publicación', 
                 'Tamaño'
             ])
-            
+
             # Data
             for b in books:
                 # Format file size if available
@@ -1259,7 +1259,7 @@ class CommandHandlers:
                     # Convert bytes to MB
                     file_size_mb = b.file_size / (1024 * 1024)
                     file_size_str = f"{file_size_mb:.2f} MB"
-                
+
                 writer.writerow([
                     b.title or "Unknown",
                     b.maquetado_por or "" if hasattr(b, 'maquetado_por') else "",
@@ -1273,7 +1273,7 @@ class CommandHandlers:
                     b.date_published.strftime("%Y-%m-%d %H:%M") if b.date_published else "",
                     file_size_str
                 ])
-            
+
             # Send as file
             csv_bytes = output.getvalue().encode('utf-8')
             await update.message.reply_document(

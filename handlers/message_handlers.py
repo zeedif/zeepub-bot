@@ -150,7 +150,7 @@ async def handle_json_upload(update: Update, context: ContextTypes.DEFAULT_TYPE)
         # Procesar en un thread aparte para no bloquear
         import asyncio
         from services.history_service import process_history_json
-        
+
         loop = asyncio.get_running_loop()
         stats = await loop.run_in_executor(None, process_history_json, file_path)
 
