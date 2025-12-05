@@ -689,13 +689,18 @@ async def enviar_libro_directo(
         destino = target_chat_id if target_chat_id else user_id
 
         # 3. Descargar EPUB
+        logger.info(f"Descargando EPUB desde: {download_url}")
         epub_bytes = await fetch_bytes(download_url, timeout=120)
         if not epub_bytes:
+            error_msg = "❌ Error al descargar el archivo desde la fuente. Posible problema con Cloudflare o servidor de origen."
+            logger.error(f"EPUB download failed for: {download_url}")
             await bot.send_message(
                 chat_id=user_id,
-                text="❌ Error al descargar el archivo desde la fuente.",
+                text=error_msg,
             )
             return False
+        
+        logger.info(f"EPUB descargado exitosamente: {len(epub_bytes) if isinstance(epub_bytes, bytes) else 'archivo temp'} bytes")
 
         # 4. Parsear metadatos del EPUB
         meta = {
@@ -706,7 +711,9 @@ async def enviar_libro_directo(
         # Use centralized metadata enrichment
         from services.epub_service import enrich_metadata_from_epub
 
+        logger.debug(f"Iniciando extracción de metadatos para: {title}")
         meta = await enrich_metadata_from_epub(epub_bytes, download_url, meta)
+        logger.debug(f"Metadatos extraídos - titulo_serie: {meta.get('titulo_serie')}, internal_title: {meta.get('internal_title')}, autor: {meta.get('autor')}")
 
         # 5. Preparar Portada
         cover_bytes = extract_cover_from_epub(epub_bytes)
@@ -765,21 +772,17 @@ async def enviar_libro_directo(
                 sinopsis_block = f"<b>Sinopsis:</b>\n{sinopsis_esc}"
 
             # Construir caption final
-            parts = []
-            if format_type == "fb_preview":
-                parts.append("<b>Vista Previa Facebook:</b>")
-
-            parts.extend(
-                [
-                    title_block,
-                    link_block,
-                    epub_info_block,
-                    metadata_block,
-                    sinopsis_block,
-                ]
-            )
+            # IMPORTANTE: NO incluir "Vista Previa Facebook" aquí, se añade al enviar el mensaje
+            parts = [
+                title_block,
+                link_block,
+                epub_info_block,
+                metadata_block,
+                sinopsis_block,
+            ]
 
             fb_caption = "\n\n".join(p for p in parts if p).strip()
+            logger.debug(f"Caption FB generado, longitud: {len(fb_caption)}")
 
             if format_type == "fb_preview":
                 # Enviar Portada y Caption al usuario
