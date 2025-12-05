@@ -7,9 +7,15 @@ y este proyecto adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [No Publicado]
 
+## [2.0.1] - 2025-12-05
+
 ### Agregado
 - Lógica de reintento con backoff exponencial para descargas HTTP para manejar problemas con Cloudflare
 - Logging detallado para diagnóstico de descargas y extracción de metadatos
+- Sistema de releases automáticas con extracción de notas desde CHANGELOG
+- Versionado semántico de imágenes Docker (major, major.minor, version)
+- Documentación completa de versionado en `VERSIONING.md`
+- `CHANGELOG.md` siguiendo estándar Keep a Changelog
 - Registro de libros publicados en base de datos con historial completo
 - Comando `/latest_books` para administradores con filtrado por chat
 - Comando `/export_db` para exportar historial a CSV
@@ -25,6 +31,7 @@ y este proyecto adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 - Mejorado manejo de errores con mensajes más descriptivos sobre Cloudflare
 - Optimizado parsing de metadatos EPUB con extracción centralizada
 - Mejorado cálculo de tamaño de archivo para EPUBs grandes (>10MB)
+- Mejorados labels de imágenes Docker con metadata del proyecto
 
 ### Corregido
 - Error en formato de Vista Previa Facebook mostrando metadatos vacíos
@@ -162,7 +169,8 @@ y este proyecto adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 - Navegación dentro del bot al descargar EPUB
 - Redirección del comando "volver a la página anterior"
 
-[No Publicado]: https://github.com/devil1210/zeepub-bot/compare/v2.0.0...HEAD
+[No Publicado]: https://github.com/devil1210/zeepub-bot/compare/v2.0.1...HEAD
+[2.0.1]: https://github.com/devil1210/zeepub-bot/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/devil1210/zeepub-bot/compare/v1.5.0...v2.0.0
 [1.5.0]: https://github.com/devil1210/zeepub-bot/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/devil1210/zeepub-bot/compare/v1.3.0...v1.4.0
