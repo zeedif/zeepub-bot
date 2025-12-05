@@ -27,11 +27,37 @@ jobs:
             echo "Type: Stable Release"
           fi
 
+      - name: Extract Changelog for Version
+        id: changelog
+        run: |
+          VERSION="${{ github.ref_name }}"
+          # Extract version without 'v' prefix
+          VERSION_NUM="${VERSION#v}"
+          
+          # Extract changelog section for this version
+          if grep -q "## \[${VERSION_NUM}\]" CHANGELOG.md; then
+            # Extract from version heading to next version heading or end
+            NOTES=$(sed -n "/## \[${VERSION_NUM}\]/,/## \[/p" CHANGELOG.md | sed '$d' | tail -n +2)
+            echo "notes<<EOF" >> $GITHUB_OUTPUT
+            echo "$NOTES" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+            echo "has_notes=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_notes=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: Release ${{ github.ref_name }}
-          generate_release_notes: true
+          body: |
+            ${{ steps.changelog.outputs.notes }}
+            
+            ---
+            
+            ## Cambios Automáticos
+            ${{ steps.changelog.outputs.has_notes == 'false' && 'Ver CHANGELOG.md para más detalles.' || '' }}
+          generate_release_notes: ${{ steps.changelog.outputs.has_notes == 'false' }}
           prerelease: ${{ steps.release_type.outputs.prerelease }}
           make_latest: ${{ steps.release_type.outputs.prerelease == 'false' }}
