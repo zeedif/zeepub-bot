@@ -36,6 +36,7 @@ __pycache__/
 !main.py
 !README.md
 !DOCKER_README.md
+!CHANGELOG.md
 
 !bot/
 !bot/*.py
