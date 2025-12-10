@@ -82,7 +82,7 @@ class BotConfig:
 
     # ZITADEL Actions v2 - Signing Key para validación de webhooks
     ZITADEL_SIGNING_KEY: str = os.getenv("ZITADEL_SIGNING_KEY", "")
-    
+
     # Donation URL
     DONATION_URL: str = os.getenv("DONATION_URL", "")
 
