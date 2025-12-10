@@ -204,6 +204,8 @@ class CommandHandlers:
                 ("📤 /export_history", "Exportar historial a CSV"),
                 ("🗑️ /clear_history", "Borrar todo el historial (Admin)"),
                 ("🔄 /reset", "Resetear descargas de usuario (uso: /reset <id>)"),
+                ("💲 /set_price", "Configurar precio de donación (Uso: /set_price <nivel> <monto>)"),
+                ("🧩 /plugins", "Listar plugins activos"),
                 ("🐞 /debug_state", "Ver estado interno de usuario"),
             ])
 
