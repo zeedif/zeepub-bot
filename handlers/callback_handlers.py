@@ -573,6 +573,41 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
 
+    if data == "notificar_donacion":
+        user = update.effective_user
+        uid = user.id
+        username = user.username or "Sin alias"
+        full_name = user.full_name
+        
+        # Enviar confirmación al usuario
+        try:
+            await query.answer("¡Gracias! Hemos notificado a los administradores.")
+            await query.edit_message_text(
+                "✅ <b>Notificación enviada</b>\n\n"
+                "Un administrador revisará tu donación pronto y actualizará tu nivel.\n"
+                "¡Muchas gracias por tu apoyo! ❤️",
+                parse_mode="HTML"
+            )
+        except Exception:
+            pass
+
+        # Notificar a los administradores
+        admin_msg = (
+            "💰 <b>Nueva Donación Reportada</b>\n\n"
+            f"👤 <b>Usuario:</b> {full_name}\n"
+            f"🔗 <b>Alias:</b> @{username}\n"
+            f"🆔 <b>ID:</b> <code>{uid}</code>\n\n"
+            "El usuario ha indicado que realizó una donación en Ko-fi.\n"
+            "Por favor verifica y usa <code>/nivel</code> (si existiera) o actualiza manualmente."
+        )
+        
+        for admin_id in config.ADMIN_USERS:
+            try:
+                await context.bot.send_message(chat_id=admin_id, text=admin_msg, parse_mode="HTML")
+            except Exception as e:
+                logger.error(f"Error notificando admin {admin_id}: {e}")
+        return
+
 def register_handlers(app):
     # CallbackQuery handlers
     app.add_handler(CallbackQueryHandler(set_destino, pattern="^destino\\|"))
@@ -580,7 +615,7 @@ def register_handlers(app):
     app.add_handler(
         CallbackQueryHandler(
             button_handler,
-            pattern="^(col\\||lib\\||nav\\||subir_nivel|volver_colecciones|volver_ultima|cerrar|descargar_epub|preparar_post_fb|publicar_fb|descartar_fb|publish_target\\||set_publish_temp\\|)",
+            pattern="^(col\\||lib\\||nav\\||subir_nivel|volver_colecciones|volver_ultima|cerrar|descargar_epub|preparar_post_fb|publicar_fb|descartar_fb|publish_target\\||set_publish_temp\\||notificar_donacion)",
         )
     )
     # Texto libre handlers

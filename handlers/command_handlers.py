@@ -277,17 +277,30 @@ class CommandHandlers:
     async def donate(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /donar: envía link de donación."""
         thread_id = get_thread_id(update)
+        user_name = update.effective_user.first_name
         text = (
             "☕ <b>Apóyanos en Ko-fi</b>\n\n"
-            "Tu ayuda nos permite mantener el bot activo y mejorarlo constantemente.\n\n"
+            f"Hola {user_name}, gracias por considerar apoyarnos. "
+            "Tu ayuda nos permite mantener activo tanto el <b>Bot</b> como el servidor <b>Kavita</b> "
+            "y mejorarlos constantemente.\n\n"
+            "📝 <b>Instrucciones:</b>\n"
+            "1. Haz tu donación en Ko-fi.\n"
+            "2. En el mensaje de la donación, puedes incluir un saludo.\n"
+            "3. Vuelve aquí y presiona el botón de abajo para avisarnos.\n\n"
             f"👉 <a href='{config.DONATION_URL}'>Haz clic aquí para donar</a>"
         )
+        
+        keyboard = [
+            [InlineKeyboardButton("✅ Ya realicé la donación", callback_data="notificar_donacion")]
+        ]
+        
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text=text,
             parse_mode="HTML",
             message_thread_id=thread_id,
             disable_web_page_preview=False,
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
     async def niveles(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
