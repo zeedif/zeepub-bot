@@ -51,6 +51,8 @@ class CommandHandlers:
         app.add_handler(CommandHandler("donate", self.donate))
         app.add_handler(CommandHandler("niveles", self.niveles))
         app.add_handler(CommandHandler("levels", self.niveles))
+        # Registrar /set_price (admin only)
+        app.add_handler(CommandHandler("set_price", self.set_price))
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /start: inicializa estado; admin->evil, otros->normal."""
@@ -306,6 +308,14 @@ class CommandHandlers:
     async def niveles(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /niveles: explica niveles de usuario y beneficios."""
         thread_id = get_thread_id(update)
+
+        from services.settings_service import get_setting
+
+        # Obtener precios dinámicos (con defaults)
+        p_white = get_setting("price_whitelist", "5")
+        p_vip = get_setting("price_vip", "10")
+        p_premium = get_setting("price_premium", "20")
+
         text = (
             "🌟 <b>Niveles de Usuario y Beneficios</b> 🌟\n\n"
             "Las donaciones nos ayudan a cubrir los costos del servidor. "
@@ -314,25 +324,69 @@ class CommandHandlers:
             f"• {config.MAX_DOWNLOADS_PER_DAY} descargas diarias\n"
             "• Acceso a búsqueda básica\n\n"
             "🔹 <b>Patrocinador</b>\n"
-            "• Donación sugerida: <b>$5 USD</b>\n"
+            f"• Donación desde: <b>${p_white} USD</b>\n"
             f"• {config.WHITELIST_DOWNLOADS_PER_DAY} descargas diarias\n"
             "• Acceso prioritario\n\n"
             "🔹 <b>VIP</b>\n"
-            "• Donación sugerida: <b>$10 USD</b>\n"
+            f"• Donación desde: <b>${p_vip} USD</b>\n"
             f"• {config.VIP_DOWNLOADS_PER_DAY} descargas diarias\n"
-            "• Soporte directo\n\n"
+            "• Soporte directo\n"
+            "• 📱 Acceso a Mini App\n\n"
             "🔹 <b>Premium</b>\n"
-            "• Donación sugerida: <b>$20 USD</b>\n"
+            f"• Donación desde: <b>${p_premium} USD</b>\n"
             "• ♾️ <b>Descargas Ilimitadas</b>\n"
-            "• Acceso a funciones exclusivas futuras\n\n"
+            "• Acceso a funciones exclusivas futuras\n"
+            "• 📱 Acceso a Mini App\n\n"
             "💳 Usa /donar para obtener el link de Ko-fi.\n"
-            "<i>(Los montos son sugeridos y ayudan a mantener el proyecto vivo ❤️)</i>"
+            "<i>(Los montos ayudan a mantener el proyecto vivo ❤️)</i>"
         )
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text=text,
             parse_mode="HTML",
             message_thread_id=thread_id,
+        )
+
+    async def set_price(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Configura el precio de donación para un nivel (solo admins)."""
+        uid = update.effective_user.id
+        if uid not in config.ADMIN_USERS:
+            await update.message.reply_text("⛔ No tienes permisos.")
+            return
+
+        if not context.args or len(context.args) != 2:
+            await update.message.reply_text(
+                "❌ Uso: /set_price <nivel> <monto>\n"
+                "Niveles: white, vip, premium\n"
+                "Ejemplo: /set_price vip 15"
+            )
+            return
+
+        level = context.args[0].lower()
+        amount = context.args[1]
+
+        # Validar que amount sea número (o al menos string razonable)
+        if not amount.isdigit() and not amount.replace('.', '', 1).isdigit():
+            await update.message.reply_text("❌ El monto debe ser un número.")
+            return
+
+        key_map = {
+            "white": "price_whitelist",
+            "patrocinador": "price_whitelist",
+            "vip": "price_vip",
+            "premium": "price_premium"
+        }
+
+        if level not in key_map:
+            await update.message.reply_text("❌ Nivel inválido. Usa: white, vip, premium")
+            return
+
+        from services.settings_service import set_setting
+        set_setting(key_map[level], amount)
+
+        await update.message.reply_text(
+            f"✅ Precio para <b>{level}</b> actualizado a: <b>${amount} USD</b>",
+            parse_mode="HTML"
         )
 
     async def cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
