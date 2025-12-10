@@ -289,11 +289,11 @@ class CommandHandlers:
             "3. Vuelve aquí y presiona el botón de abajo para avisarnos.\n\n"
             f"👉 <a href='{config.DONATION_URL}'>Haz clic aquí para donar</a>"
         )
-        
+
         keyboard = [
             [InlineKeyboardButton("✅ Ya realicé la donación", callback_data="notificar_donacion")]
         ]
-        
+
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text=text,

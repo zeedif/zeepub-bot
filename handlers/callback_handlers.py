@@ -571,14 +571,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.debug("Could not discard FB preview buttons: %s", e)
         return
-
-
     if data == "notificar_donacion":
         user = update.effective_user
         uid = user.id
         username = user.username or "Sin alias"
         full_name = user.full_name
-        
+
         # Enviar confirmación al usuario
         try:
             await query.answer("¡Gracias! Hemos notificado a los administradores.")
@@ -600,13 +598,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "El usuario ha indicado que realizó una donación en Ko-fi.\n"
             "Por favor verifica y usa <code>/nivel</code> (si existiera) o actualiza manualmente."
         )
-        
         for admin_id in config.ADMIN_USERS:
             try:
                 await context.bot.send_message(chat_id=admin_id, text=admin_msg, parse_mode="HTML")
             except Exception as e:
                 logger.error(f"Error notificando admin {admin_id}: {e}")
         return
+
 
 def register_handlers(app):
     # CallbackQuery handlers
