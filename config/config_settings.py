@@ -80,6 +80,9 @@ class BotConfig:
     # Domain for public downloads
     DL_DOMAIN: str = os.getenv("DL_DOMAIN", "dl.zeepubs.com")
 
+    # ZITADEL Actions v2 - Signing Key para validación de webhooks
+    ZITADEL_SIGNING_KEY: str = os.getenv("ZITADEL_SIGNING_KEY", "")
+
     # Límites por hora
     MAX_DOWNLOADS_PER_DAY: int = int(os.getenv("MAX_DOWNLOADS_PER_DAY", "5"))
     WHITELIST_DOWNLOADS_PER_DAY: int = int(

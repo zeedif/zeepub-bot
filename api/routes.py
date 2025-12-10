@@ -2,6 +2,8 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response, Depends,
 from typing import Optional
 import httpx
 import os
+import hmac
+import hashlib
 from config.config_settings import config
 from utils.http_client import parse_feed_from_url
 from utils.helpers import build_search_url
@@ -544,3 +546,85 @@ async def download_book(request: Request, current_uid: int = Depends(get_current
     except Exception as e:
         logger.error(f"Error in download endpoint: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/zitadel-action")
+async def zitadel_enrich_token(request: Request):
+    """
+    Endpoint para ZITADEL Actions v2 (Pre Userinfo flow).
+    Enriquece el token con roles de Kavita y preferred_username.
+    """
+    try:
+        # Validar firma de ZITADEL (seguridad crítica)
+        signature = request.headers.get("X-Zitadel-Signature")
+        
+        if not signature:
+            logger.warning("ZITADEL action called without signature")
+            raise HTTPException(status_code=401, detail="Missing signature")
+        
+        # Verificar que tengamos signing key configurada
+        if not config.ZITADEL_SIGNING_KEY:
+            logger.error("ZITADEL_SIGNING_KEY not configured")
+            raise HTTPException(status_code=500, detail="Server misconfigured")
+        
+        # Obtener body raw para verificar firma
+        body = await request.body()
+        expected_signature = hmac.new(
+            config.ZITADEL_SIGNING_KEY.encode(),
+            body,
+            hashlib.sha256
+        ).hexdigest()
+        
+        # Comparación segura contra timing attacks
+        if not hmac.compare_digest(signature, expected_signature):
+            logger.warning(f"Invalid ZITADEL signature from IP: {request.client.host}")
+            raise HTTPException(status_code=401, detail="Invalid signature")
+        
+        # Parsear JSON después de validar firma
+        data = await request.json()
+        logger.debug(f"ZITADEL action payload: {data}")
+        username = data.get("user", {}).get("username")
+        
+        if not username:
+            logger.warning("ZITADEL action received without username")
+            raise HTTPException(status_code=400, detail="Missing username")
+        
+        # 1. kavita_roles() - Roles fijos para todos los usuarios
+        kavita_roles = [
+            "Login",
+            "Download",
+            "Change Password",
+            "Bookmark",
+            "library-EpubLibre [ES]",
+            "library-EpubShosetsu [ES]",
+            "library-MiraiK [ES]",
+            "library-WhiteMoon [EN]",
+            "library-ZeePubs [ES]"
+        ]
+        
+        # 2. setPreferred() - Establecer preferred_username desde username
+        preferred_username = username
+        
+        # 3. Construir respuesta para ZITADEL Actions v2
+        response = {
+            "append_claims": [
+                {
+                    "key": "https://zeepubs.com/roles",
+                    "value": kavita_roles
+                },
+                {
+                    "key": "preferred_username",
+                    "value": preferred_username
+                }
+            ]
+        }
+        
+        logger.info(f"✅ Token enriched for user: {username}")
+        return response
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions (ya tienen logging)
+        raise
+    except Exception as e:
+        logger.error(f"❌ Unexpected error in ZITADEL action: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Internal server error")
