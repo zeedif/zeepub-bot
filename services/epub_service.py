@@ -458,7 +458,7 @@ async def enrich_metadata_from_epub(
 
     logger = logging.getLogger(__name__)
     meta = existing_meta.copy() if existing_meta else {}
-    
+
     logger.debug(f"Starting metadata enrichment for URL: {epub_url}")
 
     try:
@@ -533,7 +533,7 @@ async def enrich_metadata_from_epub(
         logger.debug(
             f"enrich_metadata_from_epub: HTML publisher URL extraction failed: {e}"
         )
-    
+
     logger.info(f"Metadata enrichment completed. Keys present: {list(meta.keys())}")
     return meta
 

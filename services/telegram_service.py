@@ -699,7 +699,7 @@ async def enviar_libro_directo(
                 text=error_msg,
             )
             return False
-        
+
         logger.info(f"EPUB descargado exitosamente: {len(epub_bytes) if isinstance(epub_bytes, bytes) else 'archivo temp'} bytes")
 
         # 4. Parsear metadatos del EPUB

@@ -32,7 +32,7 @@ async def fetch_bytes(
     Incluye lógica de reintento para manejar problemas temporales como Cloudflare.
     """
     retry_delays = [2, 5, 10]  # Delays in seconds for retries
-    
+
     for attempt in range(max_retries):
         try:
             sess = session or session_manager.get_session()
@@ -40,15 +40,15 @@ async def fetch_bytes(
             async with sess.get(url, timeout=timeout) as resp:
                 # Log response status and headers for debugging
                 logger.debug(f"Response status: {resp.status}, headers: {dict(resp.headers)}")
-                
+
                 # Check for Cloudflare errors
                 if resp.status == 403:
                     logger.warning(f"Cloudflare/403 error detected for URL: {url}")
                 elif resp.status == 503:
                     logger.warning(f"Service unavailable (503) for URL: {url}")
-                    
+
                 resp.raise_for_status()
-                
+
                 cl = resp.headers.get("Content-Length")
                 total = None
                 if cl:
@@ -56,7 +56,7 @@ async def fetch_bytes(
                         total = int(cl)
                     except ValueError:
                         total = None
-                        
+
                 # Si sabemos el tamaño y es grande, stream a archivo
                 if total is not None and total > MAX_IN_MEMORY_BYTES:
                     tmp = tempfile.NamedTemporaryFile(delete=False)
@@ -80,11 +80,11 @@ async def fetch_bytes(
                         except Exception:
                             pass
                         raise  # Re-raise to trigger retry
-                        
+
                 # Si es pequeño (o tamaño desconocido), leer todo en memoria
                 data = await resp.read()
                 length = len(data)
-                
+
                 if length > MAX_IN_MEMORY_BYTES:
                     tmp = tempfile.NamedTemporaryFile(delete=False)
                     try:
@@ -106,13 +106,13 @@ async def fetch_bytes(
                         except Exception:
                             pass
                         raise  # Re-raise to trigger retry
-                        
+
                 logger.debug("fetch_bytes devolvió bytes en memoria (%d bytes)", length)
                 return data
-                
+
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
             logger.warning(f"Error fetch_bytes (intento {attempt + 1}/{max_retries}) para {url}: {e}")
-            
+
             # If this is not the last attempt, wait before retrying
             if attempt < max_retries - 1:
                 delay = retry_delays[attempt] if attempt < len(retry_delays) else retry_delays[-1]
@@ -124,7 +124,7 @@ async def fetch_bytes(
         except Exception as e:
             logger.error(f"Error inesperado fetch_bytes para {url}: {e}", exc_info=True)
             return None
-    
+
     return None
 
 
