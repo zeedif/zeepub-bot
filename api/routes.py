@@ -4,6 +4,7 @@ import httpx
 import os
 import hmac
 import hashlib
+import json
 from config.config_settings import config
 from utils.http_client import parse_feed_from_url
 from utils.helpers import build_search_url
@@ -554,34 +555,41 @@ async def zitadel_enrich_token(request: Request):
     Enriquece el token con roles de Kavita y preferred_username.
     """
     try:
-        # Validar firma de ZITADEL (opcional) ---
+        # Leer body raw
+        body_bytes = await request.body()
+
+        # Validar firma de ZITADEL (opcional)
         signature = request.headers.get("x-zitadel-signature")
 
         # Si tenemos signing key configurada, validamos
         if config.ZITADEL_SIGNING_KEY:
             if not signature:
-                logger.warning("ZITADEL action called without signature")
+                logger.warning("⚠️ ZITADEL action received without signature header")
                 raise HTTPException(status_code=401, detail="Missing signature")
+            else:
+                # Calcular HMAC SHA256
+                expected_signature = hmac.new(
+                    config.ZITADEL_SIGNING_KEY.encode("utf-8"),
+                    body_bytes,
+                    hashlib.sha256
+                ).hexdigest()
 
-            # Obtener body raw para verificar firma
-            body_bytes = await request.body()
-            expected_signature = hmac.new(
-                config.ZITADEL_SIGNING_KEY.encode(),
-                body_bytes,
-                hashlib.sha256
-            ).hexdigest()
-
-            # Comparación segura contra timing attacks
-            if not hmac.compare_digest(signature, expected_signature):
-                logger.warning(f"Invalid ZITADEL signature from IP: {request.client.host}")
-                raise HTTPException(status_code=401, detail="Invalid signature")
+                # Comparación segura contra timing attacks
+                if not hmac.compare_digest(signature, expected_signature):
+                    logger.error(f"⛔ Invalid ZITADEL signature from IP: {request.client.host}")
+                    raise HTTPException(status_code=401, detail="Invalid signature")
         else:
-            logger.warning("ZITADEL_SIGNING_KEY not configured - skipping signature validation")
-        # --------------------------------------------------------
+            logger.warning("⚠️ ZITADEL_SIGNING_KEY not configured - skipping signature validation")
 
         # Parsear el JSON que envía ZITADEL
-        data = await request.json()
-        logger.debug(f"ZITADEL action payload: {data}")
+        try:
+            data = json.loads(body_bytes)
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=400, detail="Invalid JSON body")
+
+        logger.debug(f"Payload received: {data}")
+
+        # Extraer datos
         username = data.get("user", {}).get("username")
 
         if not username:
