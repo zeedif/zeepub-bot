@@ -46,6 +46,11 @@ class CommandHandlers:
         app.add_handler(CommandHandler("latest_books", self.latest_books))
         app.add_handler(CommandHandler("clear_history", self.clear_history))
         app.add_handler(CommandHandler("export_history", self.export_history))
+        # Registrar comandos de donación
+        app.add_handler(CommandHandler("donar", self.donate))
+        app.add_handler(CommandHandler("donate", self.donate))
+        app.add_handler(CommandHandler("niveles", self.niveles))
+        app.add_handler(CommandHandler("levels", self.niveles))
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /start: inicializa estado; admin->evil, otros->normal."""
@@ -168,6 +173,8 @@ class CommandHandlers:
             ("📊 /status", "Ver tu estado y descargas"),
             ("❌ /cancel", "Cancelar acción actual"),
             ("🔍 /search", "Buscar libros"),
+            ("☕ /donar", "Link de donación"),
+            ("🌟 /niveles", "Info de niveles de usuario"),
         ]
 
         # Comandos para Publishers (y Admins)
@@ -260,6 +267,54 @@ class CommandHandlers:
         )
 
         thread_id = get_thread_id(update)
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=text,
+            parse_mode="HTML",
+            message_thread_id=thread_id,
+        )
+
+    async def donate(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /donar: envía link de donación."""
+        thread_id = get_thread_id(update)
+        text = (
+            "☕ <b>Apóyanos en Ko-fi</b>\n\n"
+            "Tu ayuda nos permite mantener el bot activo y mejorarlo constantemente.\n\n"
+            f"👉 <a href='{config.DONATION_URL}'>Haz clic aquí para donar</a>"
+        )
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text=text,
+            parse_mode="HTML",
+            message_thread_id=thread_id,
+            disable_web_page_preview=False,
+        )
+
+    async def niveles(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /niveles: explica niveles de usuario y beneficios."""
+        thread_id = get_thread_id(update)
+        text = (
+            "🌟 <b>Niveles de Usuario y Beneficios</b> 🌟\n\n"
+            "Las donaciones nos ayudan a cubrir los costos del servidor. "
+            "Como agradecimiento, otorgamos beneficios por <b>6 meses</b> (Semestral).\n\n"
+            "🔹 <b>Lector (Gratis)</b>\n"
+            f"• {config.MAX_DOWNLOADS_PER_DAY} descargas diarias\n"
+            "• Acceso a búsqueda básica\n\n"
+            "🔹 <b>Patrocinador</b>\n"
+            "• Donación sugerida: <b>$5 USD</b>\n"
+            f"• {config.WHITELIST_DOWNLOADS_PER_DAY} descargas diarias\n"
+            "• Acceso prioritario\n\n"
+            "🔹 <b>VIP</b>\n"
+            "• Donación sugerida: <b>$10 USD</b>\n"
+            f"• {config.VIP_DOWNLOADS_PER_DAY} descargas diarias\n"
+            "• Soporte directo\n\n"
+            "🔹 <b>Premium</b>\n"
+            "• Donación sugerida: <b>$20 USD</b>\n"
+            "• ♾️ <b>Descargas Ilimitadas</b>\n"
+            "• Acceso a funciones exclusivas futuras\n\n"
+            "💳 Usa /donar para obtener el link de Ko-fi.\n"
+            "<i>(Los montos son sugeridos y ayudan a mantener el proyecto vivo ❤️)</i>"
+        )
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text=text,

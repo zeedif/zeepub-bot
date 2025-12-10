@@ -82,6 +82,9 @@ class BotConfig:
 
     # ZITADEL Actions v2 - Signing Key para validación de webhooks
     ZITADEL_SIGNING_KEY: str = os.getenv("ZITADEL_SIGNING_KEY", "")
+    
+    # Donation URL
+    DONATION_URL: str = os.getenv("DONATION_URL", "")
 
     # Límites por hora
     MAX_DOWNLOADS_PER_DAY: int = int(os.getenv("MAX_DOWNLOADS_PER_DAY", "5"))
@@ -136,6 +139,8 @@ class BotConfig:
             errors.append("OPDS_ROOT_EVIL")
         if not self.SECRET_SEED:
             errors.append("SECRET_SEED")
+        if not self.DONATION_URL:
+            errors.append("DONATION_URL")
         return (len(errors) == 0, errors)
 
     def get_six_hour_password(self) -> str:
