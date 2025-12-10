@@ -317,11 +317,12 @@ class CommandHandlers:
         p_white = get_setting("price_whitelist", "5")
         p_vip = get_setting("price_vip", "10")
         p_premium = get_setting("price_premium", "20")
+        months = get_setting("benefit_duration_months", "6")
 
         text = (
             "🌟 <b>Niveles de Usuario y Beneficios</b> 🌟\n\n"
             "Las donaciones nos ayudan a cubrir los costos del servidor. "
-            "Como agradecimiento, otorgamos beneficios por <b>6 meses</b> (Semestral).\n\n"
+            f"Como agradecimiento, otorgamos beneficios por <b>{months} meses</b> (Semestral).\n\n"
             "🔹 <b>Lector (Gratis)</b>\n"
             f"• {config.MAX_DOWNLOADS_PER_DAY} descargas diarias\n"
             "• Acceso a búsqueda básica\n\n"
@@ -359,7 +360,7 @@ class CommandHandlers:
         if not context.args or len(context.args) != 2:
             await update.message.reply_text(
                 "❌ Uso: /set_price <nivel> <monto>\n"
-                "Niveles: white, vip, premium\n"
+                "Niveles: white, vip, premium, meses\n"
                 "Ejemplo: /set_price vip 15"
             )
             return
@@ -376,18 +377,25 @@ class CommandHandlers:
             "white": "price_whitelist",
             "patrocinador": "price_whitelist",
             "vip": "price_vip",
-            "premium": "price_premium"
+            "premium": "price_premium",
+            "meses": "benefit_duration_months",
+            "duration": "benefit_duration_months"
         }
 
         if level not in key_map:
-            await update.message.reply_text("❌ Nivel inválido. Usa: white, vip, premium")
+            await update.message.reply_text("❌ Nivel inválido. Usa: white, vip, premium, meses")
             return
 
         from services.settings_service import set_setting
         set_setting(key_map[level], amount)
 
+        if level in ("meses", "duration"):
+            msg_text = f"✅ Duración de beneficios actualizada a: <b>{amount} meses</b>"
+        else:
+            msg_text = f"✅ Precio para <b>{level}</b> actualizado a: <b>${amount} USD</b>"
+
         await update.message.reply_text(
-            f"✅ Precio para <b>{level}</b> actualizado a: <b>${amount} USD</b>",
+            msg_text,
             parse_mode="HTML"
         )
 
