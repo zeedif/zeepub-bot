@@ -6,7 +6,8 @@ import aiohttp
 import feedparser
 import tempfile
 from typing import Union
-from core.session_manager import session_manager
+from typing import Union
+# from core.session_manager import session_manager (Moved to local scope)
 import logging
 
 logger = logging.getLogger(__name__)
@@ -35,6 +36,7 @@ async def fetch_bytes(
 
     for attempt in range(max_retries):
         try:
+            from core.session_manager import session_manager
             sess = session or session_manager.get_session()
             logger.debug(f"Iniciando descarga de URL OPDS (intento {attempt + 1}/{max_retries}): {url}")
             async with sess.get(url, timeout=timeout) as resp:

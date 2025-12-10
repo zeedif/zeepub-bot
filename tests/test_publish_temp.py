@@ -9,6 +9,8 @@ sys.modules["core.state_manager"] = MagicMock()
 sys.modules["core.session_manager"] = MagicMock()
 # Avoid mocking the callback_handlers module itself; it's the unit under test.
 sys.modules["services.opds_service"] = MagicMock()
+sys.modules["services.telegram_service"] = MagicMock()
+sys.modules["services"] = MagicMock()
 sys.modules["utils.http_client"] = MagicMock()
 sys.modules["utils.helpers"] = MagicMock()
 sys.modules["config.config_settings"] = MagicMock()

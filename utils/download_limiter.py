@@ -5,7 +5,7 @@ import os
 import logging
 from typing import Union, Dict
 from config.config_settings import config
-from core.state_manager import state_manager
+# from core.state_manager import state_manager (Moved to local scope)
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +28,7 @@ def load_downloads() -> None:
         for uid_str, downloads in data.items():
             try:
                 uid = int(uid_str)
+                from core.state_manager import state_manager
                 st = state_manager.get_user_state(uid)
                 st["downloads_used"] = downloads
                 count += 1
@@ -73,6 +74,7 @@ def reset_all_downloads() -> None:
     # 1. Resetear en memoria (state_manager)
     # Nota: state_manager.user_state es un dict {uid: {state...}}
     # Iteramos sobre todos los usuarios cargados en memoria
+    from core.state_manager import state_manager
     for uid, state in state_manager.user_state.items():
         if "downloads_used" in state:
             state["downloads_used"] = 0
@@ -96,6 +98,7 @@ def downloads_left(uid: int) -> Union[int, str]:
     - WhiteList: 10 descargas diarias
     - Resto: MAX_DOWNLOADS_PER_DAY por defecto (p.ej. 5)
     """
+    from core.state_manager import state_manager
     st = state_manager.get_user_state(uid)
     used = st.get("downloads_used", 0)
 
@@ -130,6 +133,7 @@ def record_download(uid: int) -> None:
     Incrementa el contador de descargas usadas en el estado del usuario
     y lo persiste en disco.
     """
+    from core.state_manager import state_manager
     st = state_manager.get_user_state(uid)
     new_count = st.get("downloads_used", 0) + 1
     st["downloads_used"] = new_count

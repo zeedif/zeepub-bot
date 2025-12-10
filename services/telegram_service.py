@@ -7,8 +7,8 @@ from urllib.parse import urlparse, unquote
 from telegram import InputFile, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import BadRequest
 from telegram.ext import ContextTypes
-from core.state_manager import state_manager
-from core.session_manager import session_manager
+# from core.state_manager import state_manager (Moved to local scope)
+# from core.session_manager import session_manager (Moved to local scope)
 from config.config_settings import config
 from services.metadata_service import (
     obtener_metadatos_opds,
@@ -262,7 +262,10 @@ async def publicar_libro(
 ):
     """Descarga EPUB para metadatos, muestra portada, sinopsis y botones."""
     bot = context.bot
+
+    from core.state_manager import state_manager
     user_state = state_manager.get_user_state(uid)
+    from core.session_manager import session_manager
     lock = session_manager.get_publish_lock(uid)
 
     async with lock:
@@ -491,6 +494,8 @@ async def descargar_epub_pendiente(
 ):
     """Envía el EPUB guardado tras confirmación del usuario."""
     bot = context.bot
+
+    from core.state_manager import state_manager
     user_state = state_manager.get_user_state(uid)
 
     from utils.helpers import get_thread_id
@@ -971,6 +976,8 @@ async def enviar_libro_directo(
 async def preparar_post_facebook(update, context: ContextTypes.DEFAULT_TYPE, uid: int):
     """Genera vista previa del post de Facebook."""
     bot = context.bot
+
+    from core.state_manager import state_manager
     user_state = state_manager.get_user_state(uid)
 
     # Recuperar datos del estado
@@ -1105,6 +1112,8 @@ async def _publish_choice_facebook(
 ):
     """Flow when a publisher chooses to publish on Facebook: send cover alone then prepare preview."""
     bot = context.bot
+
+    from core.state_manager import state_manager
     st = state_manager.get_user_state(uid)
 
     # Clear awaiting flag (we're handling the choice now)
@@ -1208,6 +1217,8 @@ async def _publish_choice_telegram(
 ):
     """Continue publish flow for Telegram: send portada, sinopsis, info and buttons (omit FB post option)."""
     bot = context.bot
+
+    from core.state_manager import state_manager
     st = state_manager.get_user_state(uid)
     st.pop("awaiting_publish_target", None)
     logger.debug(
@@ -1382,6 +1393,8 @@ async def publicar_facebook_action(
 ):
     """Publica el post en Facebook."""
     bot = context.bot
+
+    from core.state_manager import state_manager
     user_state = state_manager.get_user_state(uid)
 
     # Validar credenciales antes de proceder
