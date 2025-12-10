@@ -551,36 +551,36 @@ async def download_book(request: Request, current_uid: int = Depends(get_current
 @router.post("/zitadel-action")
 async def zitadel_enrich_token(request: Request):
     """
-    Endpoint para ZITADEL Actions v2 (Pre Userinfo flow).
+    Endpoint para ZITADEL Actions v2 (Function: preuserinfo).
     Enriquece el token con roles de Kavita y preferred_username.
     """
     try:
-        # Validar firma de ZITADEL (seguridad crítica)
-        signature = request.headers.get("X-Zitadel-Signature")
+        # Validar firma de ZITADEL (opcional) ---
+        signature = request.headers.get("x-zitadel-signature")
 
-        if not signature:
-            logger.warning("ZITADEL action called without signature")
-            raise HTTPException(status_code=401, detail="Missing signature")
+        # Si tenemos signing key configurada, validamos
+        if config.ZITADEL_SIGNING_KEY:
+            if not signature:
+                logger.warning("ZITADEL action called without signature")
+                raise HTTPException(status_code=401, detail="Missing signature")
 
-        # Verificar que tengamos signing key configurada
-        if not config.ZITADEL_SIGNING_KEY:
-            logger.error("ZITADEL_SIGNING_KEY not configured")
-            raise HTTPException(status_code=500, detail="Server misconfigured")
+            # Obtener body raw para verificar firma
+            body_bytes = await request.body()
+            expected_signature = hmac.new(
+                config.ZITADEL_SIGNING_KEY.encode(),
+                body_bytes,
+                hashlib.sha256
+            ).hexdigest()
 
-        # Obtener body raw para verificar firma
-        body = await request.body()
-        expected_signature = hmac.new(
-            config.ZITADEL_SIGNING_KEY.encode(),
-            body,
-            hashlib.sha256
-        ).hexdigest()
+            # Comparación segura contra timing attacks
+            if not hmac.compare_digest(signature, expected_signature):
+                logger.warning(f"Invalid ZITADEL signature from IP: {request.client.host}")
+                raise HTTPException(status_code=401, detail="Invalid signature")
+        else:
+            logger.warning("ZITADEL_SIGNING_KEY not configured - skipping signature validation")
+        # --------------------------------------------------------
 
-        # Comparación segura contra timing attacks
-        if not hmac.compare_digest(signature, expected_signature):
-            logger.warning(f"Invalid ZITADEL signature from IP: {request.client.host}")
-            raise HTTPException(status_code=401, detail="Invalid signature")
-
-        # Parsear JSON después de validar firma
+        # Parsear el JSON que envía ZITADEL
         data = await request.json()
         logger.debug(f"ZITADEL action payload: {data}")
         username = data.get("user", {}).get("username")
@@ -589,7 +589,7 @@ async def zitadel_enrich_token(request: Request):
             logger.warning("ZITADEL action received without username")
             raise HTTPException(status_code=400, detail="Missing username")
 
-        # 1. kavita_roles() - Roles fijos para todos los usuarios
+        # 1. Roles fijos para todos los usuarios
         kavita_roles = [
             "Login",
             "Download",
@@ -602,7 +602,7 @@ async def zitadel_enrich_token(request: Request):
             "library-ZeePubs [ES]"
         ]
 
-        # 2. setPreferred() - Establecer preferred_username desde username
+        # 2. Establecer preferred_username desde username
         preferred_username = username
 
         # 3. Construir respuesta para ZITADEL Actions v2
@@ -626,5 +626,5 @@ async def zitadel_enrich_token(request: Request):
         # Re-raise HTTP exceptions (ya tienen logging)
         raise
     except Exception as e:
-        logger.error(f"❌ Unexpected error in ZITADEL action: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Internal server error")
+        logger.error(f"❌ Error processing ZITADEL action: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Error processing action")
