@@ -64,15 +64,14 @@ async def get_feed(
     # Verificar permisos si hay UID (y no es anónimo)
     if current_uid > 0:
         allowed = (
-            current_uid in config.WHITELIST
-            or current_uid in config.VIP_LIST
+            current_uid in config.VIP_LIST
             or current_uid in config.PREMIUM_LIST
             or current_uid in config.ADMIN_USERS
         )
         if not allowed:
             raise HTTPException(
                 status_code=403,
-                detail="⛔ Esta función solo está disponible para usuarios VIP, Premium o Patrocinadores por el momento.",
+                detail="⛔ El acceso a la Mini App es exclusivo para usuarios VIP y Premium.\n\nUsa /niveles para más información.",
             )
 
     target_url = url if url else config.OPDS_ROOT_START
