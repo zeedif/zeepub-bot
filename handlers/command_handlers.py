@@ -53,6 +53,11 @@ class CommandHandlers:
         app.add_handler(CommandHandler("levels", self.niveles))
         # Registrar /set_price (admin only)
         app.add_handler(CommandHandler("set_price", self.set_price))
+        
+        # Registrar comandos de gestión de usuarios (admin)
+        app.add_handler(CommandHandler("add_user", self.add_user))
+        app.add_handler(CommandHandler("remove_user", self.remove_user))
+        app.add_handler(CommandHandler("set_staff_status", self.set_staff_status))
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /start: inicializa estado; admin->evil, otros->normal."""
