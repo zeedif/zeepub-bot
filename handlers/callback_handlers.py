@@ -606,6 +606,51 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
 
+async def set_log_level_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Callback para botones de /setlog."""
+    query = update.callback_query
+    uid = update.effective_user.id
+
+    if uid not in config.ADMIN_USERS:
+        await query.answer("⛔ No tienes permisos.", show_alert=True)
+        return
+
+    try:
+        data = query.data
+        _, level_str = data.split("|", 1)
+        level_str = level_str.upper()
+
+        valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
+        if level_str not in valid_levels:
+            await query.answer(f"Nivel inválido: {level_str}", show_alert=True)
+            return
+
+        new_level = getattr(logging, level_str)
+
+        # 1. Root logger
+        logging.getLogger().setLevel(new_level)
+
+        # 2. Specific loggers
+        loggers_to_update = ["uvicorn", "uvicorn.access", "httpx", "telegram", "apscheduler"]
+        for logger_name in loggers_to_update:
+            logging.getLogger(logger_name).setLevel(new_level)
+
+        logger.log(new_level, f"Log level cambiado a {level_str} por admin {uid} (vía botón)")
+
+        # Update message to reflect active state
+        # Rebuild keyboard to show selection? Or just text update.
+        # Text update is simpler and cleaner.
+        await query.edit_message_text(
+            f"✅ Nivel de log cambiado a <b>{level_str}</b>",
+            parse_mode="HTML"
+        )
+        await query.answer(f"Nivel cambiado a {level_str}")
+
+    except Exception as e:
+        logger.error(f"Error en set_log_level_callback: {e}", exc_info=True)
+        await query.answer("Error al cambiar nivel")
+
+
 def register_handlers(app):
     # CallbackQuery handlers
     app.add_handler(CallbackQueryHandler(set_destino, pattern="^destino\\|"))

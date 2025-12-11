@@ -55,6 +55,11 @@ class ZeePubBot:
         self.app.add_handler(CallbackQueryHandler(set_destino, pattern="^destino"))
         self.app.add_handler(CallbackQueryHandler(buscar_epub, pattern="^buscar"))
         self.app.add_handler(CallbackQueryHandler(abrir_zeepubs, pattern="^abrir"))
+        
+        # Log Level Interface
+        from handlers.callback_handlers import set_log_level_callback
+        self.app.add_handler(CallbackQueryHandler(set_log_level_callback, pattern="^setlog\\|"))
+        
         self.app.add_handler(CallbackQueryHandler(button_handler))
 
         # Mini App handlers
