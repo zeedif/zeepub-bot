@@ -387,7 +387,7 @@ class CommandHandlers:
         text = (
             "🌟 <b>Niveles de Usuario y Beneficios</b> 🌟\n\n"
             "Las donaciones nos ayudan a cubrir los costos del servidor. "
-            f"Como agradecimiento, otorgamos beneficios por <b>{months} meses</b> (Semestral).\n\n"
+            f"Como agradecimiento, otorgamos beneficios por <b>{months} meses</b>.\n\n"
             "🔹 <b>Lector (Gratis)</b>\n"
             f"• {config.MAX_DOWNLOADS_PER_DAY} descargas diarias\n"
             "• Acceso a búsqueda básica\n\n"
