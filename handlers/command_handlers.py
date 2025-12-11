@@ -57,7 +57,13 @@ class CommandHandlers:
         # Registrar comandos de gestión de usuarios (admin)
         app.add_handler(CommandHandler("add_user", self.add_user))
         app.add_handler(CommandHandler("remove_user", self.remove_user))
+        # Registrar comandos de gestión de usuarios (admin)
+        app.add_handler(CommandHandler("add_user", self.add_user))
+        app.add_handler(CommandHandler("remove_user", self.remove_user))
         app.add_handler(CommandHandler("set_staff_status", self.set_staff_status))
+
+        # Registrar /setlog (admin only)
+        app.add_handler(CommandHandler("setlog", self.setlog))
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /start: inicializa estado; admin->evil, otros->normal."""
@@ -236,6 +242,11 @@ class CommandHandlers:
                     ),
                     ("🧩 /plugins", "Listar plugins activos"),
                     ("🐞 /debug_state", "Ver estado interno de usuario"),
+                    (
+                        "🔧 /setlog",
+                        "Cambiar nivel de log (Uso: /setlog <LEVEL>)\n"
+                        "   Niveles: DEBUG, INFO, WARNING, ERROR",
+                    ),
                 ]
             )
 
@@ -801,35 +812,66 @@ class CommandHandlers:
             return
 
         if not context.args or len(context.args) < 2:
-            await update.message.reply_text(
-                "❌ Uso: /set_staff_status <id> <texto status>"
-            )
+            await update.message.reply_text("❌ Uso: /set_staff_status <id> <texto>")
             return
 
         target_id_str = context.args[0]
         if not target_id_str.isdigit():
             await update.message.reply_text("❌ ID inválido.")
             return
-        target_id = int(target_id_str)
 
+        target_id = int(target_id_str)
         status_text = " ".join(context.args[1:])
 
-        from services.user_service import get_user_info, upsert_user
+        from services.user_service import update_user_status_label
 
-        info = get_user_info(target_id)
-        if not info:
+        update_user_status_label(target_id, status_text)
+
+        await update.message.reply_text(
+            f"✅ Status para <code>{target_id}</code> actualizado a: <b>{status_text}</b>",
+            parse_mode="HTML",
+        )
+
+    async def setlog(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        /setlog <LEVEL>
+        Cambia dinámicamente el nivel de log del bot y librerías clave.
+        Solo admins.
+        """
+        uid = update.effective_user.id
+        if uid not in config.ADMIN_USERS:
+            return
+
+        if not context.args or len(context.args) != 1:
             await update.message.reply_text(
-                "❌ El usuario no existe en la DB. Úsalo primero con /add_user."
+                "❌ Uso: /setlog <LEVEL>\nExample: /setlog DEBUG"
             )
             return
 
-        current_role = info.get("role")
-        upsert_user(target_id, current_role, custom_status=status_text, created_by=uid)
+        level_str = context.args[0].upper()
+        valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
-        await update.message.reply_text(
-            f"✅ Status de <code>{target_id}</code> actualizado a: <b>{status_text}</b>",
-            parse_mode="HTML",
-        )
+        if level_str not in valid_levels:
+            await update.message.reply_text(
+                f"❌ Nivel inválido. Debe ser uno de: {', '.join(valid_levels)}"
+            )
+            return
+
+        new_level = getattr(logging, level_str)
+
+        # 1. Cambiar root logger
+        logging.getLogger().setLevel(new_level)
+
+        # 2. Cambiar loggers específicos que suelen ser ruidosos o importantes
+        loggers_to_update = ["uvicorn", "uvicorn.access", "httpx", "telegram", "apscheduler"]
+        for logger_name in loggers_to_update:
+            logging.getLogger(logger_name).setLevel(new_level)
+
+        # Loguear el cambio inmediato para verificar
+        logger.log(new_level, f"Log level cambiado a {level_str} por admin {uid}")
+
+        await update.message.reply_text(f"✅ Nivel de log cambiado a <b>{level_str}</b>", parse_mode="HTML")
+
 
     async def reset_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Existing reset command implementation
