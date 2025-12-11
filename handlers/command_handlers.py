@@ -203,6 +203,9 @@ class CommandHandlers:
                  "   Ejemplo: /latest_books -1001234567890"),
                 ("📤 /export_history", "Exportar historial a CSV"),
                 ("🗑️ /clear_history", "Borrar todo el historial (Admin)"),
+                ("➕ /add_user", "Agregar/Editar usuario (Uso: /add_user <id> <rol> [meses])"),
+                ("➖ /remove_user", "Remover usuario de DB"),
+                ("🏷️ /set_staff_status", "Definir status de Staff (Uso: /set_staff_status <id> <txt>)"),
                 ("🔄 /reset", "Resetear descargas de usuario (uso: /reset <id>)"),
                 ("💲 /set_price", "Configurar precio de donación (Uso: /set_price <nivel> <monto>)"),
                 ("🧩 /plugins", "Listar plugins activos"),
@@ -229,36 +232,55 @@ class CommandHandlers:
         uid = update.effective_user.id
         st = state_manager.get_user_state(uid)
 
-        # Determinar nivel de usuario y máximo de descargas
-        if uid in config.PREMIUM_LIST:
-            user_level = "Premium"
-            max_dl = None  # ilimitadas
-        elif uid in config.VIP_LIST:
-            user_level = "VIP"
-            max_dl = config.VIP_DOWNLOADS_PER_DAY
-        elif uid in config.WHITELIST:
-            user_level = "Patrocinador"
-            max_dl = config.WHITELIST_DOWNLOADS_PER_DAY
+        # Obtener info extendida
+        from services.user_service import get_effective_user
+        user_data = get_effective_user(uid)
+        
+        roles_display = {
+            "admin": "Admin 🛠️",
+            "staff": "Staff 🛡️", 
+            "premium": "Premium ✨",
+            "vip": "VIP ⭐️",
+            "white": "Patrocinador 🤍",
+            "free": "Lector 📚"
+        }
+        
+        role_key = user_data.get("role", "free")
+        status_label = user_data.get("status_label")
+        expires_at = user_data.get("expires_at")
+        
+        # Override label if custom status exists for staff or just generally
+        # The prompt asked for custom status for staff.
+        user_level = status_label if status_label else roles_display.get(role_key, "Lector")
+        
+        # Max dl logic
+        if role_key in ("admin", "staff", "premium"):
+             max_dl = None
+        elif role_key == "vip":
+             max_dl = config.VIP_DOWNLOADS_PER_DAY
+        elif role_key == "white":
+             max_dl = config.WHITELIST_DOWNLOADS_PER_DAY
         else:
-            user_level = "Lector"
-            max_dl = config.MAX_DOWNLOADS_PER_DAY
-
+             max_dl = config.MAX_DOWNLOADS_PER_DAY
+             
         # Descargas usadas y restantes
         used = st.get("downloads_used", 0)
+        
+
+        
         if max_dl is None:
             left_text = "✅ Descargas ilimitadas"
         else:
             remaining = max_dl - used
             left_text = f"⚡️ Te quedan {remaining if remaining>0 else 0} descargas por día (de {max_dl})"
-
-        # Calcular tiempo para próximo reset (medianoche)
+        # Calcular tiempo para próximo reset
+        from datetime import datetime, timedelta
         now = datetime.now()
         next_midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
         time_left = next_midnight - now
         hours, remainder = divmod(int(time_left.total_seconds()), 3600)
         minutes, _ = divmod(remainder, 60)
 
-        # Escape user name for HTML
         user_name = update.effective_user.first_name.replace("<", "&lt;").replace(">", "&gt;")
 
         text = (
@@ -266,6 +288,12 @@ class CommandHandlers:
             f"👤 <b>Usuario:</b> {user_name}\n"
             f"🆔 <b>ID:</b> {uid}\n"
             f"⭐ <b>Nivel:</b> {user_level}\n"
+        )
+        
+        if expires_at:
+             text += f"📅 <b>Vence:</b> {expires_at.strftime('%d/%m/%Y')}\n"
+        
+        text += (
             f"📉 <b>Descargas:</b> {left_text}\n"
             f"⏳ <b>Reinicio en:</b> {hours}h {minutes}m\n"
         )
@@ -338,8 +366,8 @@ class CommandHandlers:
             "🔹 <b>Premium</b>\n"
             f"• Donación desde: <b>${p_premium} USD</b>\n"
             "• ♾️ <b>Descargas Ilimitadas</b>\n"
-            "• Acceso a funciones exclusivas futuras\n"
-            "• 📱 Acceso a Mini App\n\n"
+            "• 📱 Acceso a Mini App\n"
+            "• Acceso a funciones exclusivas futuras\n\n"
             "💳 Usa /donar para obtener el link de Ko-fi.\n"
             "<i>(Los montos ayudan a mantener el proyecto vivo ❤️)</i>"
         )
@@ -637,6 +665,118 @@ class CommandHandlers:
             await update.message.reply_text(
                 f"❌ Error al intentar eliminar el link: {str(e)}"
             )
+
+    async def add_user(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        /add_user <id> <rol> [meses]
+        Agrega un usuario con un rol específico y duración opcional.
+        """
+        uid = update.effective_user.id
+        if uid not in config.ADMIN_USERS:
+            return
+
+        if not context.args or len(context.args) < 2:
+            await update.message.reply_text(
+                "❌ Uso: /add_user <id> <rol> [meses]\n"
+                "Roles: white, vip, premium, staff\n"
+                "Ejemplo: /add_user 123456789 vip 6"
+            )
+            return
+
+        target_id_str = context.args[0]
+        role = context.args[1].lower()
+        
+        if not target_id_str.isdigit():
+             await update.message.reply_text("❌ ID inválido.")
+             return
+        target_id = int(target_id_str)
+        
+        valid_roles = ["white", "vip", "premium", "staff"]
+        if role not in valid_roles:
+            await update.message.reply_text(f"❌ Rol inválido. Use: {', '.join(valid_roles)}")
+            return
+
+        # Determine duration
+        duration = None
+        if len(context.args) >= 3:
+            if context.args[2].isdigit():
+                duration = int(context.args[2])
+        else:
+            # Use default from settings if not provided
+            # Only for non-staff roles usually, but consistent behavior is better
+            if role != "staff":
+                from services.settings_service import get_setting
+                duration = int(get_setting("benefit_duration_months", "6"))
+
+        from services.user_service import upsert_user
+        upsert_user(target_id, role, duration_months=duration, created_by=uid)
+        
+        msg = f"✅ Usuario <code>{target_id}</code> agregado como <b>{role.capitalize()}</b>"
+        if duration:
+            msg += f" por <b>{duration} meses</b>."
+        else:
+            msg += " (Permanente/Hasta cancelación)."
+
+        await update.message.reply_text(msg, parse_mode="HTML")
+
+    async def remove_user(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        /remove_user <id>
+        Elimina un usuario de la base de datos (revoca rol dinámico).
+        """
+        uid = update.effective_user.id
+        if uid not in config.ADMIN_USERS:
+            return
+
+        if not context.args or len(context.args) != 1:
+            await update.message.reply_text("❌ Uso: /remove_user <id>")
+            return
+
+        target_id_str = context.args[0]
+        if not target_id_str.isdigit():
+             await update.message.reply_text("❌ ID inválido.")
+             return
+        target_id = int(target_id_str)
+
+        from services.user_service import remove_user
+        remove_user(target_id)
+        
+        await update.message.reply_text(f"✅ Usuario <code>{target_id}</code> removido de la DB.", parse_mode="HTML")
+
+    async def set_staff_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """
+        /set_staff_status <id> <texto>
+        Establece un status personalizado para un usuario Staff.
+        """
+        uid = update.effective_user.id
+        if uid not in config.ADMIN_USERS:
+            return
+
+        if not context.args or len(context.args) < 2:
+            await update.message.reply_text("❌ Uso: /set_staff_status <id> <texto status>")
+            return
+
+        target_id_str = context.args[0]
+        if not target_id_str.isdigit():
+             await update.message.reply_text("❌ ID inválido.")
+             return
+        target_id = int(target_id_str)
+        
+        status_text = " ".join(context.args[1:])
+        
+        from services.user_service import get_user_info, upsert_user
+        info = get_user_info(target_id)
+        if not info:
+             await update.message.reply_text("❌ El usuario no existe en la DB. Úsalo primero con /add_user.")
+             return
+             
+        current_role = info.get("role")
+        upsert_user(target_id, current_role, custom_status=status_text, created_by=uid)
+        
+        await update.message.reply_text(
+            f"✅ Status de <code>{target_id}</code> actualizado a: <b>{status_text}</b>",
+            parse_mode="HTML"
+        )
 
     async def reset_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Existing reset command implementation
