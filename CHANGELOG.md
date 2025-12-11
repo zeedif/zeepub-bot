@@ -7,6 +7,21 @@ y este proyecto adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [No Publicado]
 
+## [2.1.0] - 2025-12-11
+
+### Agregado
+- **Integración ZITADEL**: Endpoint `/api/zitadel-action` para enriquecimiento de tokens con roles Kavita y validación de firma HMAC.
+- **Gestión de Usuarios**: Nuevos comandos de admin (`/add_user`, `/remove_user`, `/set_price`, `/set_staff_status`) y roles de Staff.
+- **Sistema de Donaciones**: Comando `/donar` con opciones de reporte y notificaciones, configuración de `DONATION_URL`.
+- **Acceso Restringido**: Restricción de Mini App exclusiva para usuarios configurarbles (VIP+).
+- **Configuración Dinámica**: Infraestructura para ajustes de beneficios y precios sin reinicio.
+- **Documentación**: Actualización de `/help` y nueva variable `ZITADEL_SIGNING_KEY` en `README.md`.
+
+### Corregido
+- Eliminado texto hardcodeado "Semestral" en comando `/niveles`.
+- Resueltas dependencias circulares y arreglados tests unitarios.
+- Fix de espacios en blanco y linting general.
+
 ## [2.0.1] - 2025-12-05
 
 ### Agregado
@@ -169,7 +184,8 @@ y este proyecto adhiere a [Versionado Semántico](https://semver.org/lang/es/).
 - Navegación dentro del bot al descargar EPUB
 - Redirección del comando "volver a la página anterior"
 
-[No Publicado]: https://github.com/devil1210/zeepub-bot/compare/v2.0.1...HEAD
+[No Publicado]: https://github.com/devil1210/zeepub-bot/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/devil1210/zeepub-bot/compare/v2.0.1...v2.1.0
 [2.0.1]: https://github.com/devil1210/zeepub-bot/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/devil1210/zeepub-bot/compare/v1.5.0...v2.0.0
 [1.5.0]: https://github.com/devil1210/zeepub-bot/compare/v1.4.0...v1.5.0

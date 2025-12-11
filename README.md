@@ -164,6 +164,9 @@ FACEBOOK_GROUP_ID=tu_group_id
 
 # Dominio para links acortados
 DL_DOMAIN=https://tu-dominio.com
+
+# ZITADEL Actions
+ZITADEL_SIGNING_KEY=tu_clave_de_firma_zitadel
 ```
 
 ### 3. Desplegar con Docker
