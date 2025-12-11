@@ -5,7 +5,13 @@ from core.bot import ZeePubBot
 import logging
 
 # Configurar logging
-logging.basicConfig(level=logging.INFO)
+from config.config_settings import config
+
+# Configurar logging
+logging.basicConfig(
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    level=getattr(logging, config.LOG_LEVEL.upper(), logging.INFO),
+)
 logger = logging.getLogger(__name__)
 
 # Instancia global del bot
