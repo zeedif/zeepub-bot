@@ -887,7 +887,6 @@ class CommandHandlers:
 
         await update.message.reply_text(f"✅ Nivel de log cambiado a <b>{level_str}</b>", parse_mode="HTML")
 
-
     async def reset_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Existing reset command implementation
         """Resetea el contador de descargas de un usuario (solo admins)."""

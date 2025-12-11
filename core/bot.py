@@ -59,7 +59,7 @@ class ZeePubBot:
         # Log Level Interface
         from handlers.callback_handlers import set_log_level_callback
         self.app.add_handler(CallbackQueryHandler(set_log_level_callback, pattern="^setlog\\|"))
-        
+
         self.app.add_handler(CallbackQueryHandler(button_handler))
 
         # Mini App handlers
