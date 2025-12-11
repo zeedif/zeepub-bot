@@ -589,44 +589,72 @@ async def zitadel_enrich_token(request: Request):
 
         logger.debug(f"Payload received: {data}")
 
-        # Extraer datos
-        username = data.get("user", {}).get("username")
+        # Helper para validación
+        def safe_str(val):
+            """Extrae string válido o None"""
+            return val.strip() if isinstance(val, str) and val and val.strip() else None
 
-        if not username:
-            logger.warning("ZITADEL action received without username")
-            raise HTTPException(status_code=400, detail="Missing username")
+        # Extraer contextos
+        user_data = data.get("user", {})
+        human_data = user_data.get("human", {})
+        claims_list = []
 
-        # 1. Roles fijos para todos los usuarios
-        kavita_roles = [
-            "Login",
-            "Download",
-            "Change Password",
-            "Bookmark",
-            "library-EpubLibre [ES]",
-            "library-EpubShosetsu [ES]",
-            "library-MiraiK [ES]",
-            "library-WhiteMoon [EN]",
-            "library-ZeePubs [ES]"
-        ]
+        # Calcular preferred_username
+        preferred_username = None
+        if human_data:
+            # 1. Nickname
+            preferred_username = safe_str(human_data.get("nick_name"))
 
-        # 2. Establecer preferred_username desde username
-        preferred_username = username
+            # 2. Display Name
+            if not preferred_username:
+                preferred_username = safe_str(human_data.get("display_name"))
 
-        # 3. Construir respuesta para ZITADEL Actions v2
-        response = {
-            "append_claims": [
-                {
-                    "key": "https://zeepubs.com/roles",
-                    "value": kavita_roles
-                },
-                {
-                    "key": "preferred_username",
-                    "value": preferred_username
-                }
+            # 3. First + Last Name (concatenación inteligente)
+            if not preferred_username:
+                first = safe_str(human_data.get("first_name"))
+                last = safe_str(human_data.get("last_name"))
+                if first and last:
+                    preferred_username = f"{first} {last}"
+                elif first:
+                    preferred_username = first
+
+        # 4. Username base (fallback)
+        if not preferred_username:
+            preferred_username = safe_str(user_data.get("username"))
+
+        # 5. Email (último recurso)
+        if not preferred_username:
+            preferred_username = safe_str(human_data.get("email")) if human_data else None
+
+        # 1. Agregar preferred_username si se encontró
+        if preferred_username:
+            claims_list.append({
+                "key": "preferred_username",
+                "value": preferred_username
+            })
+
+        # 2. Agregar roles fijos para todos los usuarios de ZeePubs
+        claims_list.append({
+            "key": "https://zeepubs.com/roles",
+            "value": [
+                "Login",
+                "Download",
+                "Change Password",
+                "Bookmark",
+                "library-EpubLibre [ES]",
+                "library-EpubShosetsu [ES]",
+                "library-MiraiK [ES]",
+                "library-WhiteMoon [EN]",
+                "library-ZeePubs [ES]"
             ]
+        })
+
+        # 3. Respuesta final
+        response = {
+            "append_claims": claims_list
         }
 
-        logger.info(f"✅ Token enriched for user: {username}")
+        logger.info(f"✅ Token enriched for user: {preferred_username}")
         return response
 
     except HTTPException:
