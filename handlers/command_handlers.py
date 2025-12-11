@@ -53,7 +53,7 @@ class CommandHandlers:
         app.add_handler(CommandHandler("levels", self.niveles))
         # Registrar /set_price (admin only)
         app.add_handler(CommandHandler("set_price", self.set_price))
-        
+
         # Registrar comandos de gestión de usuarios (admin)
         app.add_handler(CommandHandler("add_user", self.add_user))
         app.add_handler(CommandHandler("remove_user", self.remove_user))
@@ -189,33 +189,55 @@ class CommandHandlers:
         is_admin = uid in config.ADMIN_USERS
 
         if is_publisher or is_admin:
-            commands.extend([
-                ("📤 /export_db", "Exportar mapeo de URLs a CSV"),
-                ("📈 /status_links", "Ver estado de links acortados"),
-                ("📋 /link_list", "Listar links acortados recientes"),
-                ("🗑️ /purge_link", "Eliminar un link acortado (uso: /purge_link <hash>)"),
-            ])
+            commands.extend(
+                [
+                    ("📤 /export_db", "Exportar mapeo de URLs a CSV"),
+                    ("📈 /status_links", "Ver estado de links acortados"),
+                    ("📋 /link_list", "Listar links acortados recientes"),
+                    (
+                        "🗑️ /purge_link",
+                        "Eliminar un link acortado (uso: /purge_link <hash>)",
+                    ),
+                ]
+            )
 
         # Comandos exclusivos de Admin
         if is_admin:
-            commands.extend([
-                ("📦 /backup_db", "Generar backup de la base de datos"),
-                ("♻️ /restore_db", "Restaurar base de datos desde archivo"),
-                ("📚 /import_history", "Importar historial desde archivo JSON de Telegram"),
-                ("🆕 /latest_books", "Ver últimos libros publicados\n"
-                 "   • Sin argumentos: todos los libros con su chat_id\n"
-                 "   • Con chat_id: solo libros de ese chat\n"
-                 "   Ejemplo: /latest_books -1001234567890"),
-                ("📤 /export_history", "Exportar historial a CSV"),
-                ("🗑️ /clear_history", "Borrar todo el historial (Admin)"),
-                ("➕ /add_user", "Agregar/Editar usuario (Uso: /add_user <id> <rol> [meses])"),
-                ("➖ /remove_user", "Remover usuario de DB"),
-                ("🏷️ /set_staff_status", "Definir status de Staff (Uso: /set_staff_status <id> <txt>)"),
-                ("🔄 /reset", "Resetear descargas de usuario (uso: /reset <id>)"),
-                ("💲 /set_price", "Configurar precio de donación (Uso: /set_price <nivel> <monto>)"),
-                ("🧩 /plugins", "Listar plugins activos"),
-                ("🐞 /debug_state", "Ver estado interno de usuario"),
-            ])
+            commands.extend(
+                [
+                    ("📦 /backup_db", "Generar backup de la base de datos"),
+                    ("♻️ /restore_db", "Restaurar base de datos desde archivo"),
+                    (
+                        "📚 /import_history",
+                        "Importar historial desde archivo JSON de Telegram",
+                    ),
+                    (
+                        "🆕 /latest_books",
+                        "Ver últimos libros publicados\n"
+                        "   • Sin argumentos: todos los libros con su chat_id\n"
+                        "   • Con chat_id: solo libros de ese chat\n"
+                        "   Ejemplo: /latest_books -1001234567890",
+                    ),
+                    ("📤 /export_history", "Exportar historial a CSV"),
+                    ("🗑️ /clear_history", "Borrar todo el historial (Admin)"),
+                    (
+                        "➕ /add_user",
+                        "Agregar/Editar usuario (Uso: /add_user <id> <rol> [meses])",
+                    ),
+                    ("➖ /remove_user", "Remover usuario de DB"),
+                    (
+                        "🏷️ /set_staff_status",
+                        "Definir status de Staff (Uso: /set_staff_status <id> <txt>)",
+                    ),
+                    ("🔄 /reset", "Resetear descargas de usuario (uso: /reset <id>)"),
+                    (
+                        "💲 /set_price",
+                        "Configurar precio de donación (Uso: /set_price <nivel> <monto>)",
+                    ),
+                    ("🧩 /plugins", "Listar plugins activos"),
+                    ("🐞 /debug_state", "Ver estado interno de usuario"),
+                ]
+            )
 
         # Construir mensaje
         # Construir mensaje
@@ -239,40 +261,41 @@ class CommandHandlers:
 
         # Obtener info extendida
         from services.user_service import get_effective_user
+
         user_data = get_effective_user(uid)
-        
+
         roles_display = {
             "admin": "Admin 🛠️",
-            "staff": "Staff 🛡️", 
+            "staff": "Staff 🛡️",
             "premium": "Premium ✨",
             "vip": "VIP ⭐️",
             "white": "Patrocinador 🤍",
-            "free": "Lector 📚"
+            "free": "Lector 📚",
         }
-        
+
         role_key = user_data.get("role", "free")
         status_label = user_data.get("status_label")
         expires_at = user_data.get("expires_at")
-        
+
         # Override label if custom status exists for staff or just generally
         # The prompt asked for custom status for staff.
-        user_level = status_label if status_label else roles_display.get(role_key, "Lector")
-        
+        user_level = (
+            status_label if status_label else roles_display.get(role_key, "Lector")
+        )
+
         # Max dl logic
         if role_key in ("admin", "staff", "premium"):
-             max_dl = None
+            max_dl = None
         elif role_key == "vip":
-             max_dl = config.VIP_DOWNLOADS_PER_DAY
+            max_dl = config.VIP_DOWNLOADS_PER_DAY
         elif role_key == "white":
-             max_dl = config.WHITELIST_DOWNLOADS_PER_DAY
+            max_dl = config.WHITELIST_DOWNLOADS_PER_DAY
         else:
-             max_dl = config.MAX_DOWNLOADS_PER_DAY
-             
+            max_dl = config.MAX_DOWNLOADS_PER_DAY
+
         # Descargas usadas y restantes
         used = st.get("downloads_used", 0)
-        
 
-        
         if max_dl is None:
             left_text = "✅ Descargas ilimitadas"
         else:
@@ -280,13 +303,18 @@ class CommandHandlers:
             left_text = f"⚡️ Te quedan {remaining if remaining>0 else 0} descargas por día (de {max_dl})"
         # Calcular tiempo para próximo reset
         from datetime import datetime, timedelta
+
         now = datetime.now()
-        next_midnight = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        next_midnight = (now + timedelta(days=1)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
         time_left = next_midnight - now
         hours, remainder = divmod(int(time_left.total_seconds()), 3600)
         minutes, _ = divmod(remainder, 60)
 
-        user_name = update.effective_user.first_name.replace("<", "&lt;").replace(">", "&gt;")
+        user_name = update.effective_user.first_name.replace("<", "&lt;").replace(
+            ">", "&gt;"
+        )
 
         text = (
             "📊 <b>Tu Estado</b>\n\n"
@@ -294,10 +322,10 @@ class CommandHandlers:
             f"🆔 <b>ID:</b> {uid}\n"
             f"⭐ <b>Nivel:</b> {user_level}\n"
         )
-        
+
         if expires_at:
-             text += f"📅 <b>Vence:</b> {expires_at.strftime('%d/%m/%Y')}\n"
-        
+            text += f"📅 <b>Vence:</b> {expires_at.strftime('%d/%m/%Y')}\n"
+
         text += (
             f"📉 <b>Descargas:</b> {left_text}\n"
             f"⏳ <b>Reinicio en:</b> {hours}h {minutes}m\n"
@@ -328,7 +356,11 @@ class CommandHandlers:
         )
 
         keyboard = [
-            [InlineKeyboardButton("✅ Ya realicé la donación", callback_data="notificar_donacion")]
+            [
+                InlineKeyboardButton(
+                    "✅ Ya realicé la donación", callback_data="notificar_donacion"
+                )
+            ]
         ]
 
         await context.bot.send_message(
@@ -337,7 +369,7 @@ class CommandHandlers:
             parse_mode="HTML",
             message_thread_id=thread_id,
             disable_web_page_preview=False,
-            reply_markup=InlineKeyboardMarkup(keyboard)
+            reply_markup=InlineKeyboardMarkup(keyboard),
         )
 
     async def niveles(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -402,7 +434,7 @@ class CommandHandlers:
         amount = context.args[1]
 
         # Validar que amount sea número (o al menos string razonable)
-        if not amount.isdigit() and not amount.replace('.', '', 1).isdigit():
+        if not amount.isdigit() and not amount.replace(".", "", 1).isdigit():
             await update.message.reply_text("❌ El monto debe ser un número.")
             return
 
@@ -412,25 +444,27 @@ class CommandHandlers:
             "vip": "price_vip",
             "premium": "price_premium",
             "meses": "benefit_duration_months",
-            "duration": "benefit_duration_months"
+            "duration": "benefit_duration_months",
         }
 
         if level not in key_map:
-            await update.message.reply_text("❌ Nivel inválido. Usa: white, vip, premium, meses")
+            await update.message.reply_text(
+                "❌ Nivel inválido. Usa: white, vip, premium, meses"
+            )
             return
 
         from services.settings_service import set_setting
+
         set_setting(key_map[level], amount)
 
         if level in ("meses", "duration"):
             msg_text = f"✅ Duración de beneficios actualizada a: <b>{amount} meses</b>"
         else:
-            msg_text = f"✅ Precio para <b>{level}</b> actualizado a: <b>${amount} USD</b>"
+            msg_text = (
+                f"✅ Precio para <b>{level}</b> actualizado a: <b>${amount} USD</b>"
+            )
 
-        await update.message.reply_text(
-            msg_text,
-            parse_mode="HTML"
-        )
+        await update.message.reply_text(msg_text, parse_mode="HTML")
 
     async def cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle /cancel: limpia estado, borra menús y confirma cancelación."""
@@ -488,7 +522,7 @@ class CommandHandlers:
         text = "🔌 <b>Plugins activos:</b>\n\n"
         for name, info in plugins.items():
             safe_name = name.replace("<", "&lt;").replace(">", "&gt;")
-            safe_desc = info['description'].replace("<", "&lt;").replace(">", "&gt;")
+            safe_desc = info["description"].replace("<", "&lt;").replace(">", "&gt;")
             text += f"• <b>{safe_name}</b> v{info['version']} — <i>{safe_desc}</i>\n"
         await context.bot.send_message(
             chat_id=update.effective_chat.id, text=text, parse_mode="HTML"
@@ -690,15 +724,17 @@ class CommandHandlers:
 
         target_id_str = context.args[0]
         role = context.args[1].lower()
-        
+
         if not target_id_str.isdigit():
-             await update.message.reply_text("❌ ID inválido.")
-             return
+            await update.message.reply_text("❌ ID inválido.")
+            return
         target_id = int(target_id_str)
-        
+
         valid_roles = ["white", "vip", "premium", "staff"]
         if role not in valid_roles:
-            await update.message.reply_text(f"❌ Rol inválido. Use: {', '.join(valid_roles)}")
+            await update.message.reply_text(
+                f"❌ Rol inválido. Use: {', '.join(valid_roles)}"
+            )
             return
 
         # Determine duration
@@ -711,11 +747,13 @@ class CommandHandlers:
             # Only for non-staff roles usually, but consistent behavior is better
             if role != "staff":
                 from services.settings_service import get_setting
+
                 duration = int(get_setting("benefit_duration_months", "6"))
 
         from services.user_service import upsert_user
+
         upsert_user(target_id, role, duration_months=duration, created_by=uid)
-        
+
         msg = f"✅ Usuario <code>{target_id}</code> agregado como <b>{role.capitalize()}</b>"
         if duration:
             msg += f" por <b>{duration} meses</b>."
@@ -739,16 +777,21 @@ class CommandHandlers:
 
         target_id_str = context.args[0]
         if not target_id_str.isdigit():
-             await update.message.reply_text("❌ ID inválido.")
-             return
+            await update.message.reply_text("❌ ID inválido.")
+            return
         target_id = int(target_id_str)
 
         from services.user_service import remove_user
-        remove_user(target_id)
-        
-        await update.message.reply_text(f"✅ Usuario <code>{target_id}</code> removido de la DB.", parse_mode="HTML")
 
-    async def set_staff_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        remove_user(target_id)
+
+        await update.message.reply_text(
+            f"✅ Usuario <code>{target_id}</code> removido de la DB.", parse_mode="HTML"
+        )
+
+    async def set_staff_status(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ):
         """
         /set_staff_status <id> <texto>
         Establece un status personalizado para un usuario Staff.
@@ -758,29 +801,34 @@ class CommandHandlers:
             return
 
         if not context.args or len(context.args) < 2:
-            await update.message.reply_text("❌ Uso: /set_staff_status <id> <texto status>")
+            await update.message.reply_text(
+                "❌ Uso: /set_staff_status <id> <texto status>"
+            )
             return
 
         target_id_str = context.args[0]
         if not target_id_str.isdigit():
-             await update.message.reply_text("❌ ID inválido.")
-             return
+            await update.message.reply_text("❌ ID inválido.")
+            return
         target_id = int(target_id_str)
-        
+
         status_text = " ".join(context.args[1:])
-        
+
         from services.user_service import get_user_info, upsert_user
+
         info = get_user_info(target_id)
         if not info:
-             await update.message.reply_text("❌ El usuario no existe en la DB. Úsalo primero con /add_user.")
-             return
-             
+            await update.message.reply_text(
+                "❌ El usuario no existe en la DB. Úsalo primero con /add_user."
+            )
+            return
+
         current_role = info.get("role")
         upsert_user(target_id, current_role, custom_status=status_text, created_by=uid)
-        
+
         await update.message.reply_text(
             f"✅ Status de <code>{target_id}</code> actualizado a: <b>{status_text}</b>",
-            parse_mode="HTML"
+            parse_mode="HTML",
         )
 
     async def reset_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1380,7 +1428,9 @@ class CommandHandlers:
         """Activa el modo de importación de historial (solo admins)."""
         uid = update.effective_user.id
         if uid not in config.ADMIN_USERS:
-            await update.message.reply_text("⛔ No tienes permisos para usar este comando.")
+            await update.message.reply_text(
+                "⛔ No tienes permisos para usar este comando."
+            )
             return
 
         st = state_manager.get_user_state(uid)
@@ -1391,7 +1441,7 @@ class CommandHandlers:
             "Por favor, envía ahora el archivo <code>result.json</code> exportado de Telegram Desktop.\n"
             "El bot procesará el archivo y guardará el historial de libros publicados.\n\n"
             "<i>Este modo se desactivará automáticamente después de recibir el archivo.</i>",
-            parse_mode="HTML"
+            parse_mode="HTML",
         )
 
     async def latest_books(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1405,7 +1455,9 @@ class CommandHandlers:
 
         # Restricción: solo admins
         if uid not in config.ADMIN_USERS:
-            await update.message.reply_text("⛔ No tienes permisos para usar este comando.")
+            await update.message.reply_text(
+                "⛔ No tienes permisos para usar este comando."
+            )
             return
 
         try:
@@ -1432,7 +1484,9 @@ class CommandHandlers:
                         f"📚 No hay libros registrados en el chat {channel_filter}."
                     )
                 else:
-                    await update.message.reply_text("📚 No hay libros registrados en el historial.")
+                    await update.message.reply_text(
+                        "📚 No hay libros registrados en el historial."
+                    )
                 return
 
             # Título del mensaje según modo
@@ -1446,14 +1500,18 @@ class CommandHandlers:
                 title = b.title or "Sin título"
                 author = b.author or "Desconocido"
                 series = f" ({b.series})" if b.series else ""
-                date_str = b.date_published.strftime("%Y-%m-%d %H:%M") if b.date_published else "?"
+                date_str = (
+                    b.date_published.strftime("%Y-%m-%d %H:%M")
+                    if b.date_published
+                    else "?"
+                )
 
                 text += f"🔹 <b>{title}</b>{series}\n"
                 text += f"   ✍️ {author}\n"
                 text += f"   📅 {date_str} | #️⃣ {b.slug}\n"
 
                 # Mostrar chat_id si NO estamos filtrando (modo sin argumentos)
-                if not channel_filter and hasattr(b, 'channel_id') and b.channel_id:
+                if not channel_filter and hasattr(b, "channel_id") and b.channel_id:
                     text += f"   📍 Chat: {b.channel_id}\n"
 
                 text += "\n"
@@ -1468,7 +1526,9 @@ class CommandHandlers:
         """Borra todo el historial de libros publicados (solo admin)."""
         uid = update.effective_user.id
         if uid not in config.ADMIN_USERS:
-            await update.message.reply_text("⛔ No tienes permisos para usar este comando.")
+            await update.message.reply_text(
+                "⛔ No tienes permisos para usar este comando."
+            )
             return
 
         # Confirmación simple (podría ser mejor con botones, pero por ahora texto)
@@ -1476,87 +1536,104 @@ class CommandHandlers:
             await update.message.reply_text(
                 "⚠️ <b>¡ATENCIÓN!</b> Esto borrará TODO el historial de libros publicados.\n"
                 "Para confirmar, usa: <code>/clear_history confirm</code>",
-                parse_mode="HTML"
+                parse_mode="HTML",
             )
             return
 
         try:
             from services.history_service import clear_history
+
             if clear_history():
                 await update.message.reply_text("✅ Historial borrado exitosamente.")
             else:
                 await update.message.reply_text("❌ Error al borrar el historial.")
         except Exception as e:
             logger.error(f"Error in clear_history: {e}")
-            await update.message.reply_text("❌ Error inesperado al borrar el historial.")
+            await update.message.reply_text(
+                "❌ Error inesperado al borrar el historial."
+            )
 
     async def export_history(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Exporta el historial de libros publicados a CSV."""
         uid = update.effective_user.id
         # Allow publishers and admins
         if uid not in config.ADMIN_USERS and uid not in config.PUBLISHER_USERS:
-            await update.message.reply_text("⛔ No tienes permisos para usar este comando.")
+            await update.message.reply_text(
+                "⛔ No tienes permisos para usar este comando."
+            )
             return
 
         try:
             from services.history_service import get_latest_books
+
             # Get all books (set a high limit)
             books = get_latest_books(limit=10000)
 
             if not books:
-                await update.message.reply_text("📚 No hay libros registrados en el historial.")
+                await update.message.reply_text(
+                    "📚 No hay libros registrados en el historial."
+                )
                 return
 
             # Create CSV
             import csv
             import io
+
             output = io.StringIO()
             writer = csv.writer(output)
 
             # Header
-            writer.writerow([
-                'Título', 
-                'Maquetado por', 
-                'Demografía', 
-                'Géneros', 
-                'Autor', 
-                'Serie', 
-                'Slug', 
-                'Ilustrador', 
-                'Traducción', 
-                'Fecha Publicación', 
-                'Tamaño'
-            ])
+            writer.writerow(
+                [
+                    "Título",
+                    "Maquetado por",
+                    "Demografía",
+                    "Géneros",
+                    "Autor",
+                    "Serie",
+                    "Slug",
+                    "Ilustrador",
+                    "Traducción",
+                    "Fecha Publicación",
+                    "Tamaño",
+                ]
+            )
 
             # Data
             for b in books:
                 # Format file size if available
                 file_size_str = ""
-                if hasattr(b, 'file_size') and b.file_size:
+                if hasattr(b, "file_size") and b.file_size:
                     # Convert bytes to MB
                     file_size_mb = b.file_size / (1024 * 1024)
                     file_size_str = f"{file_size_mb:.2f} MB"
 
-                writer.writerow([
-                    b.title or "Unknown",
-                    b.maquetado_por or "" if hasattr(b, 'maquetado_por') else "",
-                    b.demografia or "" if hasattr(b, 'demografia') else "",
-                    b.generos or "" if hasattr(b, 'generos') else "",
-                    b.author or "Desconocido",
-                    b.series or "",
-                    b.slug or "",
-                    b.ilustrador or "" if hasattr(b, 'ilustrador') else "",
-                    b.traduccion or "" if hasattr(b, 'traduccion') else "",
-                    b.date_published.strftime("%Y-%m-%d %H:%M") if b.date_published else "",
-                    file_size_str
-                ])
+                writer.writerow(
+                    [
+                        b.title or "Unknown",
+                        b.maquetado_por or "" if hasattr(b, "maquetado_por") else "",
+                        b.demografia or "" if hasattr(b, "demografia") else "",
+                        b.generos or "" if hasattr(b, "generos") else "",
+                        b.author or "Desconocido",
+                        b.series or "",
+                        b.slug or "",
+                        b.ilustrador or "" if hasattr(b, "ilustrador") else "",
+                        b.traduccion or "" if hasattr(b, "traduccion") else "",
+                        (
+                            b.date_published.strftime("%Y-%m-%d %H:%M")
+                            if b.date_published
+                            else ""
+                        ),
+                        file_size_str,
+                    ]
+                )
 
             # Send as file
-            csv_bytes = output.getvalue().encode('utf-8')
+            csv_bytes = output.getvalue().encode("utf-8")
             await update.message.reply_document(
                 document=csv_bytes,
                 filename="historial_libros.csv",
-                caption=f"📊 Historial de {len(books)} libros publicados"
+                caption=f"📊 Historial de {len(books)} libros publicados",
             )
 
         except Exception as e:
